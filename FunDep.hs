@@ -33,8 +33,12 @@ type Fd1 = '["A", "B"] --> '["C"]
 type Fd2 = '["C"] --> '["D", "E"]
 type Fd3 = '["F"] --> '["G"]
 type Fd4 = '["D"] --> '["H"]
+type Fd5 = '["D"] --> '["I"]
+type Fd6 = '["B"] --> '["H"]
 
 type Fds1 = '[Fd1, Fd2, Fd3, Fd4]
+type Fds2 = '[Fd1, Fd2, Fd3, Fd4, Fd5]
+type Fds3 = '[Fd1, Fd2, Fd3, Fd4, Fd6]
 
 data FunDepList :: [k] -> * where
   FunDepList :: FunDepList fds
@@ -44,6 +48,14 @@ type family Left (f :: FunDep) :: [Symbol] where
 
 type family Right (f :: FunDep) :: [Symbol] where
   Right ('FunDep _ right) = right
+
+type family Rights (f :: [FunDep]) :: [[Symbol]] where
+  Rights '[] = '[]
+  Rights (x ': xs) = Right x ': Rights xs
+
+type family Lefts (f :: [FunDep]) :: [[Symbol]] where
+  Lefts '[] = '[]
+  Lefts (x ': xs) = Left x ': Lefts xs
 
 -- from label list to fundep list
 type family Closure (from :: [Symbol]) (to :: [FunDep]) :: [Symbol] where
@@ -56,3 +68,12 @@ type family TransClosure (from :: [Symbol]) (to :: [FunDep]) :: [Symbol] where
 type family TransClosureF (from :: [Symbol]) (to :: [FunDep]) fuel :: [Symbol] where
   TransClosureF fr fds 0 = fr
   TransClosureF fr fds n = (TransClosureF (Closure fr fds) fds (n-1))
+
+type family Outputs (fds :: [FunDep]) where
+  Outputs '[] = '[]
+  Outputs (fd ': fds) = (SetSubtract (Right fd) (Left fd)) :++ Outputs fds
+
+type family IsInTreeForm (fds :: [FunDep]) where
+  IsInTreeForm fds = AllDisjoint (Rights fds) && AllDisjoint (SLAsSet (Lefts fds))
+
+type InTreeForm fds = IsInTreeForm fds ~ 'True

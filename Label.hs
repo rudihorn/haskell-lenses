@@ -47,6 +47,14 @@ type family IsDisjoint (l :: [Symbol]) (r :: [Symbol]) :: Bool where
   IsDisjoint '[] _ = 'True
   IsDisjoint (x ': xs) ys = Not (IsElement x ys) && IsDisjoint xs ys
 
+type family DisjointFromAll (s :: [Symbol]) (xs :: [[Symbol]]) :: Bool where
+  DisjointFromAll xs '[]  = 'True
+  DisjointFromAll xs (y ': ys) = IsDisjoint xs y && DisjointFromAll xs ys
+
+type family AllDisjoint (s :: [[Symbol]]) :: Bool where
+  AllDisjoint '[] = 'True
+  AllDisjoint (x ': xs) = DisjointFromAll x xs && AllDisjoint xs
+
 type family IsEqual (l :: [Symbol]) (r :: [Symbol]) :: Bool where
   IsEqual l l = 'True
   IsEqual _ _ = 'False
@@ -54,6 +62,10 @@ type family IsEqual (l :: [Symbol]) (r :: [Symbol]) :: Bool where
 type family LabUnion (l :: [Symbol]) (r :: [Symbol]) :: [Symbol] where
   LabUnion '[] ys = ys
   LabUnion (x ': xs) ys = If (IsElement x ys) (LabUnion xs ys) (x ': (LabUnion xs ys))
+
+type family SetSubtract (l :: [Symbol]) (r :: [Symbol]) :: [Symbol] where
+  SetSubtract '[] _ = '[]
+  SetSubtract (x ': xs) ys = If (IsElement x ys) (SetSubtract xs ys) (x ': SetSubtract xs ys)
 
 type family Len (l :: [k]) :: Nat where
   Len '[] = 0
@@ -85,6 +97,33 @@ type family SymAsSet (t :: [k]) :: [k] where
 
 type family SymUnion (s :: [k]) (t :: [k]) :: [k] where
   SymUnion s t = SymAsSet (s :++ t)
+
+type family SLCmpHelper (s :: [Symbol]) (t :: [Symbol]) (o :: Ordering) :: Ordering where
+  SLCmpHelper xs ys 'EQ = SLCmp xs ys
+  SLCmpHelper xs ys 'LT = 'LT
+  SLCmpHelper xs ys 'GT = 'GT
+
+type family SLCmp (s :: [Symbol]) (t :: [Symbol]) :: Ordering where
+  SLCmp '[] '[] = 'EQ
+  SLCmp '[] _ = 'LT
+  SLCmp _ '[] = 'GT
+  SLCmp (x ': xs) (y ': ys) = SLCmpHelper xs ys (CmpSymbol x y)
+
+type family SLFilterLT (x :: k) (xs :: [k]) (o :: Ordering) :: [k] where
+  SLFilterLT x xs 'LT = x ': xs
+  SLFilterLT x xs _ = xs
+
+type family SLFilter (f :: SymFlag) (p :: k) (xs :: [k]) :: [k] where
+  SLFilter f p '[] = '[]
+  SLFilter 'SymFMin p (x ': xs) = SLFilterLT x (SLFilter 'SymFMin p xs) (SLCmp x p)
+  SLFilter 'SymFMax p (x ': xs) = SLFilterLT x (SLFilter 'SymFMax p xs) (SLCmp p p)
+
+type family SLSort (xs :: [k]) :: [k] where
+  SLSort '[] = '[]
+  SLSort (x ': xs) = ((SLSort (SLFilter 'SymFMin x xs)) :++ '[x]) :++ (SLSort (SLFilter 'SymFMax x xs))
+
+type family SLAsSet (t :: [k]) :: [k] where
+  SLAsSet s = SymNub (SLSort s)
 
 ppList :: String -> [String] -> String
 ppList = intercalate

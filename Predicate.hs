@@ -94,6 +94,15 @@ type family FTV (phrase :: Phrase) :: [Symbol] where
 
 type Env = [(Symbol, Types.Type)]
 
+type family VarsEnv (env :: Env) :: [Symbol] where
+  VarsEnv '[] = '[]
+  VarsEnv ( '(k, v) ': env) = k ': (VarsEnv env)
+
+type family RemoveEnv (vars :: [Symbol]) (env :: Env) where
+  RemoveEnv vs '[] = '[]
+  RemoveEnv vs ( '(k, v) ': xs) = If (IsElement k vs) (RemoveEnv vs xs) ( '(k, v) ': RemoveEnv vs xs)
+
+
 type family TypVal(c :: Value) :: Types.Type where
   TypVal ('Bool _) = 'Types.Bool
   TypVal ('Int _) = 'Types.Int
@@ -129,16 +138,24 @@ type family Typ (env :: Env) (phrase :: Phrase) :: Maybe Types.Type where
   Typ env ('UnaryAppl op p) = TypUnary op (Typ env p)
   Typ env ('InfixAppl op p1 p2) = TypInfix op (Typ env p1) (Typ env p2)
 
-type family IsLJDI (phrase :: Phrase) (vs :: [Symbol]) :: Bool where
-  IsLJDI ('InfixAppl 'LogicalAnd p1 p2) vs = IsLJDI p1 vs && IsLJDI p2 vs
-  IsLJDI p vs = IsSubset (FTV p) vs || IsDisjoint (FTV p) vs
+type TypesBool env phr = Typ env phr ~ 'Just 'Types.Bool
+
+type family IsLJDI (vs :: [Symbol]) (phrase :: Phrase) :: Bool where
+  IsLJDI vs ('InfixAppl 'LogicalAnd p1 p2) = IsLJDI vs p1 && IsLJDI vs p2
+  IsLJDI vs p = IsSubset (FTV p) vs || IsDisjoint (FTV p) vs
 
 -- :t Proxy :: Proxy (IsLJDI Ph3 '["A"])
 -- :t Proxy :: Proxy (IsLJDI Ph4 '["A"])
 
-type LJDI p vs = IsLJDI p vs ~ 'True
+type LJDI vs p = IsLJDI vs p ~ 'True
 
 type EvalEnv = [(Symbol,Value)]
+
+type family Vars (env :: EvalEnv) :: [Symbol] where
+  Vars '[] = '[]
+  Vars ('(key,_) ': xs) = key ': Vars xs
+
+type HasCols ev env = IsSubset (Vars ev) (VarsEnv env) ~ 'True
 
 type EvalEnv1 = '[ '("A", 'Int 30), '("B", 'Bool 'True), '("C", 'Int 10) ]
 type EvalEnv2 = '[ '("A", 'Int 100), '("B", 'Bool 'True), '("C", 'Int 10) ]
@@ -171,10 +188,34 @@ type family Eval (env :: EvalEnv) (phrase :: Phrase) :: Maybe Value where
   Eval env ('Var v) = LookupEvalVar env v
   Eval env ('InfixAppl op p1 p2) = EvalInfix op (Eval env p1) (Eval env p2)
 
--- Test with: 
+-- Test with:
   -- :t Proxy :: Proxy (Eval EvalEnv1 Ph3)
   -- :t Proxy :: Proxy (Eval EvalEnv2 Ph3)
   -- :t Proxy :: Proxy (Eval EvalEnv2 Ph4)
+
+type family UnpackTrue (v :: Maybe Value) :: Bool where
+  UnpackTrue ('Just ('Bool 'True)) = 'True
+  UnpackTrue _ = 'False
+
+type family IsDefVIEx (subs :: Bool) (disj :: Bool) (env :: EvalEnv) (phrase :: Phrase) :: Bool where
+  IsDefVIEx 'True _ env p = UnpackTrue (Eval env p)
+  IsDefVIEx 'False 'True env p = 'True
+  IsDefVIEx _ _ _ _ = 'False
+
+type family IsDefVI (env :: EvalEnv) (phrase :: Phrase) :: Bool where
+  IsDefVI env ('InfixAppl 'LogicalAnd p1 p2) = IsDefVI env p1 && IsDefVI env p2
+  IsDefVI env p = IsDefVIEx (IsSubset (FTV p) (Vars env)) (IsDisjoint (FTV p) (Vars env)) env p
+
+type DefVI env p = IsDefVI env p ~ 'True
+
+type family ReplacePredicate (env :: EvalEnv) (phrase :: Phrase) :: Phrase where
+  ReplacePredicate env ('InfixAppl 'LogicalAnd p1 p2) = ReplacePredicate env p1 :& ReplacePredicate env p2
+  ReplacePredicate env p = If (IsSubset (FTV p) (Vars env)) (B 'True) p
+
+type family Simplify (phrase :: Phrase) :: Phrase where
+  Simplify ('InfixAppl 'LogicalAnd ('Constant ('Bool 'True)) p2) = p2
+  Simplify ('InfixAppl 'LogicalAnd p1 ('Constant ('Bool 'True))) = p1
+  Simplify p = p
 
 type family Rem (phrase :: Phrase) (vs :: [Symbol]) :: Phrase where
   Rem ('InfixAppl 'LogicalAnd p1 p2) vs = 'InfixAppl 'LogicalAnd (Rem p1 vs) (Rem p2 vs)

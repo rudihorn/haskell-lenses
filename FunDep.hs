@@ -35,10 +35,12 @@ type Fd3 = '["F"] --> '["G"]
 type Fd4 = '["D"] --> '["H"]
 type Fd5 = '["D"] --> '["I"]
 type Fd6 = '["B"] --> '["H"]
+type Fd7 = '["C"] --> '["D"]
 
 type Fds1 = '[Fd1, Fd2, Fd3, Fd4]
 type Fds2 = '[Fd1, Fd2, Fd3, Fd4, Fd5]
 type Fds3 = '[Fd1, Fd2, Fd3, Fd4, Fd6]
+type Fds4 = '[Fd1, Fd7, Fd3, Fd4]
 
 data FunDepList :: [k] -> * where
   FunDepList :: FunDepList fds
@@ -74,6 +76,48 @@ type family Outputs (fds :: [FunDep]) where
   Outputs (fd ': fds) = (SetSubtract (Right fd) (Left fd)) :++ Outputs fds
 
 type family IsInTreeForm (fds :: [FunDep]) where
-  IsInTreeForm fds = AllDisjoint (Rights fds) && AllDisjoint (SLAsSet (Lefts fds))
+  IsInTreeForm fds =
+    AllDisjoint (Rights fds) && AllDisjoint (SLAsSet (Rights fds :++ Lefts fds)) && IsAcyclic fds
 
 type InTreeForm fds = IsInTreeForm fds ~ 'True
+
+-- Cycle checks
+
+type family StartingPoints (lefts :: [[Symbol]]) (rights :: [[Symbol]]) :: [[Symbol]] where
+  StartingPoints '[] _ = '[]
+  StartingPoints (x ': xs) rights = If (DisjointFromAll x rights) (x ': StartingPoints xs rights) (StartingPoints xs rights)
+
+type family FollowRes (isel :: Bool) (from :: [[Symbol]]) (fd :: FunDep) (sub :: ([[Symbol]], [FunDep])) :: ([[Symbol]], [FunDep]) where
+  FollowRes 'True from fd '(visited, fds) = '(Right fd ': visited, fds)
+  FollowRes 'False from fd '(visited, fds) = '(visited, fd ': fds)
+
+type family Follow (from :: [[Symbol]]) (fds :: [FunDep]) :: ([[Symbol]], [FunDep]) where
+  Follow from '[] = '(from, '[])
+  Follow from (fd ': fds) = FollowRes (IsElement (Left fd) from) from fd (Follow from fds)
+
+type family IsAcyclicEx (res :: ([[Symbol]], [FunDep])) (fuel :: Nat) :: Bool where
+  IsAcyclicEx '(syms, '[]) _ = AllDisjoint syms
+  IsAcyclicEx _ 0 = 'False
+  IsAcyclicEx '(syms, fds) n = IsAcyclicEx (Follow syms fds) (n-1)
+
+type family IsAcyclic (fds :: [FunDep]) :: Bool where
+  IsAcyclic fds = IsAcyclicEx '(StartingPoints (Lefts fds) (Rights fds), fds) (Len fds)
+
+-- FDS sanitation
+
+type family RightSplit (right :: [Symbol]) (lefts :: [[Symbol]]) :: [[Symbol]] where
+  RightSplit '[] _ = '[]
+  RightSplit r '[] = '[r]
+  RightSplit r (x ': xs) = If (IsSubset x r) (x ': RightSplit (SetSubtract r x) xs) (RightSplit r xs)
+
+type family MakeFDs (left :: [Symbol]) (rights :: [[Symbol]]) :: [FunDep] where
+  MakeFDs _ '[] = '[]
+  MakeFDs left (r ': rs) = 'FunDep left r ': MakeFDs left rs
+
+type family FDSRightSplitEx (fds :: [FunDep]) (lefts :: [[Symbol]]) :: [FunDep] where
+  FDSRightSplitEx '[] _ = '[]
+  FDSRightSplitEx (fd ': fds) lefts =
+    MakeFDs (Left fd) (RightSplit (Right fd) lefts) :++ FDSRightSplitEx fds lefts
+
+type family SplitFDs (fds :: [FunDep]) :: [FunDep] where
+  SplitFDs fds = FDSRightSplitEx fds (Lefts fds)

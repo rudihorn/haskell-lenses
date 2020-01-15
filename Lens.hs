@@ -17,11 +17,15 @@ type family IsIgnoresOutputs (phrase :: Phrase) (fds :: [FunDep]) :: Bool where
 type IgnoresOutputs p fds = IsIgnoresOutputs p fds ~ 'True
 
 data Lens (rt :: Env) (p :: Phrase) (fds :: [FunDep]) where
-  Prim :: Proxy rt -> Proxy fds -> Lens rt (Predicate.B 'True) fds
-  Join :: (IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2) =>
-    Lens rt1 p1 fds1 -> Lens rt1 p2 fds2 -> Lens rt1 (Simplify (p1 :& p2)) (fds1 :++ fds2)
-  Select :: (TypesBool rt p, IgnoresOutputs pred fds) =>
-    Proxy p -> Lens rt pred fds -> Lens rt (Simplify (p :& pred)) fds
+  Prim :: Proxy rt -> Proxy fds -> Lens rt (Predicate.B 'True) (SplitFDs fds)
+  Join :: (IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2, InTreeForm fds1, InTreeForm fds2) =>
+    Lens rt1 p1 fds1 ->
+    Lens rt2 p2 fds2 ->
+    Lens rt1 (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
+  Select :: (TypesBool rt p, IgnoresOutputs pred fds, InTreeForm fds) =>
+    Proxy p ->
+    Lens rt pred fds ->
+    Lens rt (Simplify (p :& pred)) fds
   Drop ::
     (HasCols env rt, LJDI (Vars env) pred, DefVI env pred) =>
     Proxy env ->

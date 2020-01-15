@@ -34,7 +34,7 @@ instance LabListKnown (LabList '[]) where
 instance (KnownSymbol x, LabListKnown (LabList xs)) => LabListKnown (LabList (x ': xs)) where
   labListVal _ = labVal (Lab :: Lab x) : (labListVal (LabList :: LabList xs))
 
-type family IsElement (s :: Symbol) (r :: [Symbol]) :: Bool where
+type family IsElement (s :: k) (r :: [k]) :: Bool where
   IsElement _ '[] = 'False
   IsElement x (x ': xs) = 'True
   IsElement x (y ': ys) = IsElement x ys

@@ -56,3 +56,10 @@ simplify (P.InfixAppl (P.LogicalAnd) (P.Constant (Bool False)) _) = P.Constant (
 simplify (P.InfixAppl (P.LogicalAnd) p1 (P.Constant (Bool True))) = p1
 simplify (P.InfixAppl (P.LogicalAnd) _ (P.Constant (Bool False))) = P.Constant (Bool False)
 simplify p = p
+
+conjunction :: [P.Phrase id Value] -> P.Phrase id Value
+conjunction (P.Constant (Bool True) : y : xs) = conjunction $ y : xs
+conjunction (x : y : xs) = P.InfixAppl P.LogicalAnd x $ conjunction $ y : xs
+conjunction [x] = x
+conjunction [] = P.Constant (Bool True)
+

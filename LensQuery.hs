@@ -21,9 +21,10 @@ import Data.Text.Lazy.Builder
 import qualified QueryPrecedence as QP
 import Data.Text.Buildable(Buildable)
 import Data.String
+import Control.Monad.State.Lazy
 
 type Columns = Map.Map String ([String], Types.Type)
-type ColumnsOpt = Map.Map String (String, [String])
+type ColumnsOpt = Map.Map String (String, String)
 
 class ColumnMap a where
   column_map :: a -> Columns
@@ -105,11 +106,32 @@ print_query cols (P.Case inp cases other) _ =
   build_inp (Just x) = build "({}) " (Only $ print_query cols x QP.first)
   build_case (key, val) = build "WHEN {} THEN {}" (print_query cols key QP.first, print_query cols val QP.first)
 
+cols_opt :: Columns -> State (Int,[[String]]) ColumnsOpt
+cols_opt cols = do es <- mapM f $ Map.toList cols
+                   return (Map.fromList $ concat es) where
+  f (k,(tbls,_)) = entries k tbls
+  fresh = do (id,cols) <- get
+             put (id + 1, cols)
+             return $ "__" ++ show id
+  add_eqs cs = do (id, cols) <- get
+                  put (id, cs : cols)
+                  return ()
+  fresh_entries col tbl = do id <- fresh
+                             return $ entry id col tbl
+  entry k col tbl = (k, (col, tbl))
+  entries k tbls = do others <- mapM (fresh_entries k) $ tail tbls
+                      add_eqs $ k : map fst others
+                      return $ entry k k (head tbls) : others
+
 build_query :: (RecoverTables t, RecoverEnv r, Recoverable p DP.Phrase) => Lens t r p fds -> Builder
 build_query (l :: Lens t r p fds) = build "SELECT {} FROM {} WHERE {}" (cols_bld, tbls_bld, pred_bld) where
   cols = column_map l
+  (cols', (_, grps)) = runState (cols_opt cols) (1,[])
+  build_group (x : y : xs) = P.InfixAppl P.Equal (P.Var x) (P.Var y) : build_group (y : xs)
+  build_group _ = []
+  build_groups = DP.conjunction $ map DP.conjunction $ map build_group grps
   cols_bld = build_sep_str ", " $ map (\(k,v) -> print_col k v) $ Map.toList cols
-  pred_bld = print_query cols (query_predicate l) QP.first
+  pred_bld = print_query cols' (DP.conjunction [build_groups, query_predicate l]) QP.first
   tbls_bld = build_sep_str ", " $ map (build "`{}`" . Only) $ tbls
   tbls = recover_tables (Proxy :: Proxy t)
 

@@ -1,10 +1,12 @@
 {-# LANGUAGE GADTs, DataKinds, KindSignatures, TypeOperators, TypeFamilies,
              MultiParamTypeClasses, FlexibleInstances, PolyKinds,
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
-             ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving #-}
+             ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
+             ConstraintKinds #-}
 
 module FunDep where
 
+import Common
 import GHC.TypeLits
 import GHC.TypeNats
 import Data.Type.Bool
@@ -79,7 +81,7 @@ type family IsInTreeForm (fds :: [FunDep]) where
   IsInTreeForm fds =
     AllDisjoint (Rights fds) && AllDisjoint (SLAsSet (Rights fds :++ Lefts fds)) && IsAcyclic fds
 
-type InTreeForm fds = IsInTreeForm fds ~ 'True
+type InTreeForm fds = OkOrError (IsInTreeForm fds) ('Text "The functional dependencies are not in tree form.")
 
 -- Cycle checks
 

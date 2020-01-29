@@ -34,10 +34,24 @@ instance LabListKnown (LabList '[]) where
 instance (KnownSymbol x, LabListKnown (LabList xs)) => LabListKnown (LabList (x ': xs)) where
   labListVal _ = labVal (Lab :: Lab x) : (labListVal (LabList :: LabList xs))
 
+type family Equal (x :: k) (y :: k) :: Bool where
+  Equal x x = 'True
+  Equal _ _ = 'False
+
+type family AddIf (cond :: Bool) (v :: k) (vs :: [k]) :: [k] where
+  AddIf 'True v vs = v ': vs
+  AddIf 'False _ vs = vs
+
 type family IsElement (s :: k) (r :: [k]) :: Bool where
   IsElement _ '[] = 'False
   IsElement x (x ': xs) = 'True
   IsElement x (y ': ys) = IsElement x ys
+
+type family IsNoDuplicates (s :: [k]) :: Bool where
+  IsNoDuplicates '[] = 'True
+  IsNoDuplicates (x ': xs) = Not (IsElement x xs) && IsNoDuplicates xs
+
+type NoDuplicates s = IsNoDuplicates s ~ 'True
 
 type family IsSubset (l :: [Symbol]) (r :: [Symbol]) :: Bool where
   IsSubset '[] _ = 'True
@@ -61,11 +75,15 @@ type family IsEqual (l :: [Symbol]) (r :: [Symbol]) :: Bool where
 
 type family LabUnion (l :: [Symbol]) (r :: [Symbol]) :: [Symbol] where
   LabUnion '[] ys = ys
-  LabUnion (x ': xs) ys = If (IsElement x ys) (LabUnion xs ys) (x ': (LabUnion xs ys))
+  LabUnion (x ': xs) ys = AddIf  (Not (IsElement x ys)) x (LabUnion xs ys)
 
 type family SetSubtract (l :: [Symbol]) (r :: [Symbol]) :: [Symbol] where
   SetSubtract '[] _ = '[]
-  SetSubtract (x ': xs) ys = If (IsElement x ys) (SetSubtract xs ys) (x ': SetSubtract xs ys)
+  SetSubtract (x ': xs) ys = AddIf (Not (IsElement x ys)) x (SetSubtract xs ys)
+
+type family SetIntersection (l :: [Symbol]) (r :: [Symbol]) :: [Symbol] where
+  SetIntersection '[] r = '[]
+  SetIntersection (x ': xs) ys = AddIf (IsElement x ys) x (SetIntersection xs ys)
 
 type family Len (l :: [k]) :: Nat where
   Len '[] = 0

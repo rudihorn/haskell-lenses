@@ -5,6 +5,8 @@
 
 module Predicate where
 
+import Common
+import RowType
 import GHC.TypeLits
 import Data.List
 import Data.Type.Set
@@ -16,6 +18,14 @@ data UnaryOperator where
   Negate :: UnaryOperator
   UnaryMinus :: UnaryOperator
 
+instance Recoverable 'Negate UnaryOperator where
+  recover Proxy = Negate
+
+instance Recoverable 'UnaryMinus UnaryOperator where
+  recover Proxy = UnaryMinus
+
+-- Operator
+
 data Operator where
   Plus :: Operator
   LogicalAnd :: Operator
@@ -24,48 +34,68 @@ data Operator where
   Equal :: Operator
   LessThan :: Operator
 
+instance Recoverable 'LogicalAnd Operator where
+  recover Proxy = LogicalAnd
+
+instance Recoverable 'LogicalOr Operator where
+  recover Proxy = LogicalOr
+
+instance Recoverable 'GreaterThan Operator where
+  recover Proxy = GreaterThan
+
+instance Recoverable 'LessThan Operator where
+  recover Proxy = LessThan
+
+instance Recoverable 'Equal Operator where
+  recover Proxy = Equal
+
+instance Recoverable 'Plus Operator where
+  recover Proxy = Plus
+
 data Value where
   Bool :: Bool -> Value
   Int :: Nat -> Value
   String :: Symbol -> Value
 
-data Phrase where
-  Constant :: Value -> Phrase
-  Var :: Symbol -> Phrase
-  InfixAppl :: Operator -> Phrase -> Phrase -> Phrase
-  UnaryAppl :: UnaryOperator -> Phrase -> Phrase
-  In :: [Symbol] -> [[Value]] -> Phrase
-  Case :: Maybe Phrase -> [(Phrase, Phrase)] -> Phrase
+data Phrase id v where
+  Constant :: v -> Phrase id v
+  Var :: id -> Phrase id v
+  InfixAppl :: Operator -> Phrase id v -> Phrase id v -> Phrase id v
+  UnaryAppl :: UnaryOperator -> Phrase id v -> Phrase id v
+  In :: [id] -> [[v]] -> Phrase id v
+  Case :: Maybe (Phrase id v) -> [(Phrase id v, Phrase id v)] -> Phrase id v -> Phrase id v
 
-type family V (v :: Symbol) :: Phrase where
+type SPhrase = Phrase Symbol Value
+
+type family V (v :: Symbol) :: SPhrase where
   V v = 'Var v
 
-type family I (i :: Nat) :: Phrase where
+type family I (i :: Nat) :: SPhrase where
   I v = 'Constant ('Int v)
 
-type family S (i :: Symbol) :: Phrase where
+type family S (i :: Symbol) :: SPhrase where
   S v = 'Constant ('String v)
 
-type family B (i :: Bool) :: Phrase where
+type family B (i :: Bool) :: SPhrase where
   B v = 'Constant ('Bool v)
 
-type family (:+) (p :: Phrase) (q :: Phrase) :: Phrase where
+type family (:+) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
   p :+ q = 'InfixAppl 'Plus p q
 
-type family (:&) (p :: Phrase) (q :: Phrase) :: Phrase where
+type family (:&) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
   p :& q = 'InfixAppl 'LogicalAnd p q
 
-type family (:|) (p :: Phrase) (q :: Phrase) :: Phrase where
+type family (:|) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
  p :| q = 'InfixAppl 'LogicalOr p q
 
-type family (:>) (p :: Phrase) (q :: Phrase) :: Phrase where
+type family (:>) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
  p :> q = 'InfixAppl 'GreaterThan p q
 
-type family (:=) (p :: Phrase) (q :: Phrase) :: Phrase where
- p :> q = 'InfixAppl 'Equal p q
+type family (:=) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
+ p := q = 'InfixAppl 'Equal p q
 
-type family (:<) (p :: Phrase) (q :: Phrase) :: Phrase where
- p :> q = 'InfixAppl 'LessThan p q
+type family (:<) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
+ p :< q = 'InfixAppl 'LessThan p q
 
 type Ph1 = I 0
 
@@ -77,30 +107,20 @@ type Ph4 = (V "A" :> I 99) :& (V "B" :| (V "A" :< I 30))
 
 type Env1 = '[ '("A", 'Types.Int), '("B", 'Types.Bool), '("C", 'Types.Int) ]
 
-type family Neg (p :: Phrase) :: Phrase where
+type family Neg (p :: SPhrase) :: SPhrase where
  Neg p = 'UnaryAppl 'UnaryMinus p
 
-type family BNeg (p :: Phrase) :: Phrase where
+type family BNeg (p :: SPhrase) :: SPhrase where
  BNeg p = 'UnaryAppl 'Negate p
 
-type family FTV (phrase :: Phrase) :: [Symbol] where
+type family FTV (phrase :: SPhrase) :: [Symbol] where
   FTV ('Constant _) = '[]
   FTV ('Var v) = '[v]
   FTV ('InfixAppl op p1 p2) = FTV p1 :++ FTV p2
   FTV ('UnaryAppl op p) = FTV p
   FTV ('In _ _) = '[]
-  FTV ('Case 'Nothing ps) = '[]
-  FTV ('Case ('Just p) ps) = FTV p
-
-type Env = [(Symbol, Types.Type)]
-
-type family VarsEnv (env :: Env) :: [Symbol] where
-  VarsEnv '[] = '[]
-  VarsEnv ( '(k, v) ': env) = k ': (VarsEnv env)
-
-type family RemoveEnv (vars :: [Symbol]) (env :: Env) where
-  RemoveEnv vs '[] = '[]
-  RemoveEnv vs ( '(k, v) ': xs) = If (IsElement k vs) (RemoveEnv vs xs) ( '(k, v) ': RemoveEnv vs xs)
+  FTV ('Case 'Nothing ps other) = '[] :++ FTV other
+  FTV ('Case ('Just p) ps other) = FTV p :++ FTV other
 
 
 type family TypVal(c :: Value) :: Types.Type where
@@ -132,7 +152,7 @@ type family TypInfix (op :: Operator) (pt1 :: Maybe Types.Type) (pt2 :: Maybe Ty
   TypInfix 'LessThan pt1 pt2 = TypCmp pt1 pt2
   TypInfix _ _ _ = 'Nothing
 
-type family Typ (env :: Env) (phrase :: Phrase) :: Maybe Types.Type where
+type family Typ (env :: Env) (phrase :: SPhrase) :: Maybe Types.Type where
   Typ _ ('Constant c) = 'Just (TypVal c)
   Typ env ('Var v) = LookupVar env v
   Typ env ('UnaryAppl op p) = TypUnary op (Typ env p)
@@ -140,7 +160,7 @@ type family Typ (env :: Env) (phrase :: Phrase) :: Maybe Types.Type where
 
 type TypesBool env phr = Typ env phr ~ 'Just 'Types.Bool
 
-type family IsLJDI (vs :: [Symbol]) (phrase :: Phrase) :: Bool where
+type family IsLJDI (vs :: [Symbol]) (phrase :: SPhrase) :: Bool where
   IsLJDI vs ('InfixAppl 'LogicalAnd p1 p2) = IsLJDI vs p1 && IsLJDI vs p2
   IsLJDI vs p = IsSubset (FTV p) vs || IsDisjoint (FTV p) vs
 
@@ -183,7 +203,7 @@ type family EvalInfix (op :: Operator) (v1 :: Maybe Value) (v2 :: Maybe Value) :
   EvalInfix 'GreaterThan ('Just v1) ('Just v2) = EvalCmp 'GT v1 v2
   EvalInfix _ _ _ = 'Nothing
 
-type family Eval (env :: EvalEnv) (phrase :: Phrase) :: Maybe Value where
+type family Eval (env :: EvalEnv) (phrase :: SPhrase) :: Maybe Value where
   Eval _ ('Constant c) = 'Just c
   Eval env ('Var v) = LookupEvalVar env v
   Eval env ('InfixAppl op p1 p2) = EvalInfix op (Eval env p1) (Eval env p2)
@@ -197,26 +217,26 @@ type family UnpackTrue (v :: Maybe Value) :: Bool where
   UnpackTrue ('Just ('Bool 'True)) = 'True
   UnpackTrue _ = 'False
 
-type family IsDefVIEx (subs :: Bool) (disj :: Bool) (env :: EvalEnv) (phrase :: Phrase) :: Bool where
+type family IsDefVIEx (subs :: Bool) (disj :: Bool) (env :: EvalEnv) (phrase :: SPhrase) :: Bool where
   IsDefVIEx 'True _ env p = UnpackTrue (Eval env p)
   IsDefVIEx 'False 'True env p = 'True
   IsDefVIEx _ _ _ _ = 'False
 
-type family IsDefVI (env :: EvalEnv) (phrase :: Phrase) :: Bool where
+type family IsDefVI (env :: EvalEnv) (phrase :: SPhrase) :: Bool where
   IsDefVI env ('InfixAppl 'LogicalAnd p1 p2) = IsDefVI env p1 && IsDefVI env p2
   IsDefVI env p = IsDefVIEx (IsSubset (FTV p) (Vars env)) (IsDisjoint (FTV p) (Vars env)) env p
 
 type DefVI env p = IsDefVI env p ~ 'True
 
-type family ReplacePredicate (env :: EvalEnv) (phrase :: Phrase) :: Phrase where
+type family ReplacePredicate (env :: EvalEnv) (phrase :: SPhrase) :: SPhrase where
   ReplacePredicate env ('InfixAppl 'LogicalAnd p1 p2) = ReplacePredicate env p1 :& ReplacePredicate env p2
   ReplacePredicate env p = If (IsSubset (FTV p) (Vars env)) (B 'True) p
 
-type family Simplify (phrase :: Phrase) :: Phrase where
+type family Simplify (phrase :: SPhrase) :: SPhrase where
   Simplify ('InfixAppl 'LogicalAnd ('Constant ('Bool 'True)) p2) = p2
   Simplify ('InfixAppl 'LogicalAnd p1 ('Constant ('Bool 'True))) = p1
   Simplify p = p
 
-type family Rem (phrase :: Phrase) (vs :: [Symbol]) :: Phrase where
+type family Rem (phrase :: SPhrase) (vs :: [Symbol]) :: SPhrase where
   Rem ('InfixAppl 'LogicalAnd p1 p2) vs = 'InfixAppl 'LogicalAnd (Rem p1 vs) (Rem p2 vs)
   Rem p vs = If (IsDisjoint (FTV p) vs) p ('Constant ('Bool 'True))

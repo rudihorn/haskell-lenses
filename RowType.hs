@@ -14,6 +14,8 @@ import GHC.TypeLits
 import Label
 import qualified Types
 import qualified Value
+import Database.PostgreSQL.Simple.FromRow
+import qualified Database.PostgreSQL.Simple.FromField as Fld
 
 type Env = [(Symbol, Types.Type)]
 
@@ -169,6 +171,14 @@ row2 = Cons (Value.String "h") RowType.Empty
 row3 :: Row '[ '( "A", 'Types.Int), '("C", 'Types.Bool), '("B", 'Types.String)]
 row3 = Cons (Value.Int 5) (Cons (Value.Bool True) (Cons (Value.String "h") RowType.Empty))
 
+
+-- FetchRow
+
+instance FromRow (Row '[]) where
+  fromRow = return RowType.Empty
+
+instance (Fld.FromField t0, FromRow (Row xs), Value.MakeValue t0, t0 ~ Types.HaskellType t, Types.LensType t0 ~ t) => FromRow (Row ('(k, t) ': xs)) where
+  fromRow = Cons <$> (Value.make @t0 <$> field) <*> fromRow @(Row xs)
 
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).

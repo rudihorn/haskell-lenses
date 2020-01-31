@@ -69,14 +69,14 @@ lens2 = select @(V "A" :> I 30) lens1
 lens3 = dropl @'[ '("A", 'Int 40)] lens2
 
 -- Bohanonn et al. PODS 2016 examples
-albums = prim @"Albums" @'[ '("Album", 'T.String), '("Quantity", 'T.Int)]
-  @'[ '["Album"] --> '["Quantity"]]
+albums = prim @"albums" @'[ '("album", 'T.String), '("quantity", 'T.Int)]
+  @'[ '["album"] --> '["quantity"]]
 
-tracks = prim @"Tracks" @'[ '("Track", 'T.String), '("Date", 'T.Int), '("Rating", 'T.Int), '("Album", 'T.String)]
-  @'[ '["Track"] --> '["Date", "Rating"]]
+tracks = prim @"tracks" @'[ '("track", 'T.String), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
+  @'[ '["track"] --> '["date", "rating"]]
 
 tracks1 = join albums tracks
 
-tracks2 = dropl @'[ '("Track", 'String "unknown")] tracks1
+tracks2 = dropl @'[ '("track", 'String "unknown")] tracks1
 
-tracks3 = select @(V "Quantity" :> I 2) tracks2
+tracks3 = select @(V "quantity" :> I 2) tracks2

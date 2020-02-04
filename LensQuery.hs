@@ -162,5 +162,3 @@ build_query db (l :: Lens t r p fds) =
   pred_bld = print_query db cols' (DP.conjunction [build_groups, query_predicate l]) QP.first
   tbls_bld = build_sep_str ", " <$> (mapM (\x -> build "{}" <$> Only <$> (escId db x)) tbls)
   tbls = recover_tables (Proxy :: Proxy t)
-
-

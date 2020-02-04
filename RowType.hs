@@ -47,10 +47,17 @@ type family LookupType (env :: Env) (s :: Symbol) :: Types.Type where
   LookupType ('(key, val) ': xs) key = val
   LookupType (_ ': xs) key = LookupType xs key
 
-type family Find (env :: Env) (s :: Symbol) :: InEnvEvid where
-  Find ('(key, val) ': env) key = 'Take
-  Find ('(other, val) ': env) key = 'Skip (Find env key)
+type family SkipMaybe (s :: Maybe InEnvEvid) :: Maybe InEnvEvid where
+  SkipMaybe 'Nothing = 'Nothing
+  SkipMaybe ('Just x) = 'Just ('Skip x)
 
+type family FindMaybe (env :: Env) (s :: Symbol) :: Maybe InEnvEvid where
+  FindMaybe '[] _ = 'Nothing
+  FindMaybe ('(key, val) ': env) key = 'Just 'Take
+  FindMaybe ('(other, val) ': env) key = SkipMaybe (FindMaybe env key)
+
+type family Find (env :: Env) (s :: Symbol) :: InEnvEvid where
+  Find env s = UnpackMaybe (FindMaybe env s)
 
 data Row (e :: Env) where
   Empty :: Row '[]
@@ -106,19 +113,33 @@ type family UpdateType (s :: Symbol) (t :: Types.Type) (env :: Env) :: Env where
   UpdateType s t ('(s, _) ': env) = '(s, t) ': env
   UpdateType s t ('(k,v) ': env) = '(k, v) ': (UpdateType s t env)
 
-class UpdateRow s (t :: Types.Type) (r :: Env) (i :: InEnvEvid) where
-  intupdate :: Value.Value t -> Row r -> Row (UpdateType s t r)
+type family SetType (s :: Symbol) (t :: Types.Type) (env :: Env) (i :: Maybe InEnvEvid) :: Env where
+  SetType s t env 'Nothing = '(s, t) ': env
+  SetType s t ('(k, v) ': env) ('Just 'Take) = '(s, t) ': env
+  SetType s t ('(k, v) ': env) ('Just ('Skip ev)) = '(k, v) ': (SetType s t env ('Just ev))
 
-instance UpdateRow s t ('(s, t1) ': env) 'Take where
+class UpdateRow s (t :: Types.Type) (r :: Env) (i :: Maybe InEnvEvid) where
+  intupdate :: Value.Value t -> Row r -> Row (SetType s t r i)
+
+instance UpdateRow s t ('(s, t1) ': env) ('Just 'Take) where
   intupdate v (Cons _ env) = Cons v env
 
 type Same s t k v env = UpdateType s t ('(k, v) : env) ~ ('(k, v) : UpdateType s t env)
 
-instance (UpdateRow s t env ev, Same s t k v env) => UpdateRow s t ('(k, v) ': env) ('Skip ev) where
-  intupdate v (Cons w row :: Row ('(k, v) ': env)) = Cons w (intupdate @s @t @env @ev v row) :: Row ('(k, v) ': UpdateType s t (env))
+instance (UpdateRow s t env ('Just ev)) => UpdateRow s t ('(k, v) ': env) ('Just ('Skip ev)) where
+  intupdate v (Cons w row :: Row ('(k, v) ': env)) = Cons w (intupdate @s @t @env @('Just ev) v row) :: Row ('(k, v) ': SetType s t (env) ('Just ev))
 
-update :: forall s t env. (UpdateRow s (Types.LensType t) env (Find env s), Value.MakeValue t) => t -> Row env -> Row (UpdateType s (Types.LensType t) env)
-update v row = intupdate @s @(Types.LensType t) @env @(Find env s) (Value.make v) row
+instance UpdateRow s t env 'Nothing where
+  intupdate (v :: Value.Value t) row = Cons v row :: Row ('(s, t) ': env)
+
+update :: forall s t env. (UpdateRow s (Types.LensType t) env (FindMaybe env s), Value.MakeValue t) => t -> Row env -> Row (SetType s (Types.LensType t) env (FindMaybe env s))
+update v row = intupdate @s @(Types.LensType t) @env @(FindMaybe env s) (Value.make v) row
+
+update_str :: forall s env. (UpdateRow s 'Types.String env (FindMaybe env s)) => String -> Row env -> Row (SetType s 'Types.String env (FindMaybe env s))
+update_str v row = update @s v row
+
+update_int :: forall s env. (UpdateRow s 'Types.Int env (FindMaybe env s)) => Int -> Row env -> Row (SetType s 'Types.Int env (FindMaybe env s))
+update_int v row = update @s v row
 
 
 -- Projection

@@ -183,6 +183,7 @@ type family JoinRowTypes (e1 :: Env) (e2 :: Env) :: Env where
 
 -- Examples
 
+
 row1 :: Row '[ '( "A", 'Types.Int), '("B", 'Types.String)]
 row1 = Cons (Value.Int 5) (Cons (Value.String "h") RowType.Empty)
 

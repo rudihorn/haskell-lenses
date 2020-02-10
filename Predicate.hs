@@ -12,7 +12,7 @@ import Data.List
 import Data.Type.Set
 import Data.Type.Bool
 import Label
-import qualified Types
+import qualified Types as T
 
 data UnaryOperator where
   Negate :: UnaryOperator
@@ -64,6 +64,7 @@ data Phrase id v where
   UnaryAppl :: UnaryOperator -> Phrase id v -> Phrase id v
   In :: [id] -> [[v]] -> Phrase id v
   Case :: Maybe (Phrase id v) -> [(Phrase id v, Phrase id v)] -> Phrase id v -> Phrase id v
+  Dynamic :: RowType.Env -> T.Type -> Phrase id v
 
 type SPhrase = Phrase Symbol Value
 
@@ -86,16 +87,19 @@ type family (:&) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
   p :& q = 'InfixAppl 'LogicalAnd p q
 
 type family (:|) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
- p :| q = 'InfixAppl 'LogicalOr p q
+  p :| q = 'InfixAppl 'LogicalOr p q
 
 type family (:>) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
- p :> q = 'InfixAppl 'GreaterThan p q
+  p :> q = 'InfixAppl 'GreaterThan p q
 
 type family (:=) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
- p := q = 'InfixAppl 'Equal p q
+  p := q = 'InfixAppl 'Equal p q
 
 type family (:<) (p :: SPhrase) (q :: SPhrase) :: SPhrase where
- p :< q = 'InfixAppl 'LessThan p q
+  p :< q = 'InfixAppl 'LessThan p q
+
+type family IfThen (pcond :: SPhrase) (pthen :: SPhrase) (pelse :: SPhrase) :: SPhrase where
+  IfThen pcond pthen pelse = 'Case ('Just pcond) '[ '(B 'True, pthen)] pelse
 
 type Ph1 = I 0
 
@@ -105,7 +109,7 @@ type Ph3 = (V "A" :> I 99) :& (V "B" :| (V "C" :< I 30))
 
 type Ph4 = (V "A" :> I 99) :& (V "B" :| (V "A" :< I 30))
 
-type Env1 = '[ '("A", 'Types.Int), '("B", 'Types.Bool), '("C", 'Types.Int) ]
+type Env1 = '[ '("A", 'T.Int), '("B", 'T.Bool), '("C", 'T.Int) ]
 
 type family Neg (p :: SPhrase) :: SPhrase where
  Neg p = 'UnaryAppl 'UnaryMinus p
@@ -123,42 +127,70 @@ type family FTV (phrase :: SPhrase) :: [Symbol] where
   FTV ('Case ('Just p) ps other) = FTV p :++ FTV other
 
 
-type family TypVal(c :: Value) :: Types.Type where
-  TypVal ('Bool _) = 'Types.Bool
-  TypVal ('Int _) = 'Types.Int
-  TypVal ('String _) = 'Types.String
+type family TypVal(c :: Value) :: T.Type where
+  TypVal ('Bool _) = 'T.Bool
+  TypVal ('Int _) = 'T.Int
+  TypVal ('String _) = 'T.String
 
-type family LookupVar (env :: Env) (v :: Symbol) :: Maybe Types.Type where
+type family LookupVar (env :: Env) (v :: Symbol) :: Maybe T.Type where
   LookupVar '[] _ = 'Nothing
   LookupVar ('(key,val) ': xs) key = 'Just val
   LookupVar (_ ': xs) key = LookupVar xs key
 
-type family TypUnary (op :: UnaryOperator) (pt :: Maybe Types.Type) :: Maybe Types.Type where
-  TypUnary 'Negate ('Just 'Types.Bool) = 'Just 'Types.Bool
-  TypUnary 'UnaryMinus ('Just 'Types.Int) = 'Just 'Types.Int
+type family TypUnary (op :: UnaryOperator) (pt :: Maybe T.Type) :: Maybe T.Type where
+  TypUnary 'Negate ('Just 'T.Bool) = 'Just 'T.Bool
+  TypUnary 'UnaryMinus ('Just 'T.Int) = 'Just 'T.Int
   TypUnary _ _ = 'Nothing
 
-type family TypCmp (pt1 :: Maybe Types.Type) (pt2 :: Maybe Types.Type) :: Maybe Types.Type where
+type family TypCmp (pt1 :: Maybe T.Type) (pt2 :: Maybe T.Type) :: Maybe T.Type where
   TypCmp 'Nothing 'Nothing = 'Nothing
-  TypCmp a a = 'Just 'Types.Bool
+  TypCmp a a = 'Just 'T.Bool
   TypCmp _ _ = 'Nothing
 
-type family TypInfix (op :: Operator) (pt1 :: Maybe Types.Type) (pt2 :: Maybe Types.Type) :: Maybe Types.Type where
-  TypInfix 'Plus ('Just 'Types.Int) ('Just 'Types.Int) = 'Just 'Types.Int
-  TypInfix 'LogicalAnd ('Just 'Types.Bool) ('Just 'Types.Bool) = 'Just 'Types.Bool
-  TypInfix 'LogicalOr ('Just 'Types.Bool) ('Just 'Types.Bool) = 'Just 'Types.Bool
+type family TypInfix (op :: Operator) (pt1 :: Maybe T.Type) (pt2 :: Maybe T.Type) :: Maybe T.Type where
+  TypInfix 'Plus ('Just 'T.Int) ('Just 'T.Int) = 'Just 'T.Int
+  TypInfix 'LogicalAnd ('Just 'T.Bool) ('Just 'T.Bool) = 'Just 'T.Bool
+  TypInfix 'LogicalOr ('Just 'T.Bool) ('Just 'T.Bool) = 'Just 'T.Bool
   TypInfix 'GreaterThan pt1 pt2 = TypCmp pt1 pt2
   TypInfix 'Equal pt1 pt2 = TypCmp pt1 pt2
   TypInfix 'LessThan pt1 pt2 = TypCmp pt1 pt2
   TypInfix _ _ _ = 'Nothing
 
-type family Typ (env :: Env) (phrase :: SPhrase) :: Maybe Types.Type where
+type family TypCase (env :: Env) (ct :: Maybe T.Type) (elsetyp :: Maybe T.Type) (cases :: [(SPhrase, SPhrase)]) :: Maybe T.Type where
+  TypCase _ 'Nothing _ _ = 'Nothing
+  TypCase _ ('Just _) elsetyp '[]  = elsetyp
+  TypCase env ct elsetyp ('(k, v) ': cases) =
+    If (Equal (Typ env k) ct && Equal (Typ env v) elsetyp) (TypCase env ct elsetyp cases) 'Nothing
+
+type family TypeDynamic (env :: Env) (rt :: Env) (ret :: T.Type) :: Maybe T.Type where
+  TypeDynamic _ '[] ret = 'Just ret
+  TypeDynamic env ('(k,t) ': rt) ret =
+    If (Equal (LookupVar env k) ('Just t)) (TypeDynamic env rt ret) 'Nothing
+
+type family TypAll (env :: Env) (ids :: [Symbol]) :: [Maybe T.Type] where
+  TypAll env '[] = '[]
+  TypAll env (id ': ids) = LookupVar env id ': TypAll env ids
+
+type family TupleTypes (typs :: [Maybe T.Type]) (v :: [Value]) :: Bool where
+  TupleTypes '[] '[] = 'True
+  TupleTypes (t ': ts) (v ': vs) = Equal t ('Just (TypVal v)) && TupleTypes ts vs
+  TupleTypes _ _ = 'False
+
+type family TypeIn (typs :: [Maybe T.Type]) (v :: [[Value]]) :: Maybe T.Type where
+  TypeIn _ '[] = 'Just 'T.Bool
+  TypeIn ts (v ': vs) = If (TupleTypes ts v) (TypeIn ts vs) 'Nothing
+
+type family Typ (env :: Env) (phrase :: SPhrase) :: Maybe T.Type where
   Typ _ ('Constant c) = 'Just (TypVal c)
   Typ env ('Var v) = LookupVar env v
   Typ env ('UnaryAppl op p) = TypUnary op (Typ env p)
   Typ env ('InfixAppl op p1 p2) = TypInfix op (Typ env p1) (Typ env p2)
+  Typ env ('Case 'Nothing cases other) = TypCase env ('Just 'T.Bool) (Typ env other) cases
+  Typ env ('Case ('Just cond) cases other) = TypCase env (Typ env cond) (Typ env other) cases
+  Typ env ('In ids vss) = TypeIn (TypAll env ids) vss
+  Typ env ('Dynamic rt t) = TypeDynamic env rt t
 
-type TypesBool env phr = Typ env phr ~ 'Just 'Types.Bool
+type TypesBool env phr = Typ env phr ~ 'Just 'T.Bool
 
 type family IsLJDI (vs :: [Symbol]) (phrase :: SPhrase) :: Bool where
   IsLJDI vs ('InfixAppl 'LogicalAnd p1 p2) = IsLJDI vs p1 && IsLJDI vs p2

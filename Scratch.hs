@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts, ScopedTypeVariables, TypeApplications, DataKinds #-}
 
 module Scratch where
 
@@ -14,6 +14,9 @@ import qualified Types as T
 import RowType
 import Lens
 import LensQuery
+import qualified Predicate as P
+import qualified DynamicPredicate as DP
+import HybridPredicate
 import Data.Text.Format
 import Data.Text.Lazy.Builder(toLazyText)
 import qualified Data.String as BS
@@ -48,8 +51,22 @@ testdb (l :: Lens t r p fds) = do
     connectPassword = "links"
   }
   let lft f arg = build "{}" <$> Only <$> BLU.toString <$> fromRight "error" <$> f conn (BLU.fromString arg)
-  let db = (lft escapeIdentifier, lft escapeStringConn)
+  let lft2 f arg = build "'{}'" <$> Only <$> lft f arg
+  let db = (lft escapeIdentifier, lft2 escapeStringConn)
   q <- build_query db l
+  -- for debugging:
+  -- do Prelude.print q
   mapM_ Prelude.print =<< (query_ conn (Query { fromQuery = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q}) :: IO [Row r])
-  --return q
-  --mapM_ print =<< (query_ conn "select 2 + 2 as foo, 'hello' as bla" :: IO [Row '[ '( "A", 'Types.Int), '("B", 'Types.String)]])
+
+type PredRow = '[ '("quantity", 'T.Int), '("album", 'T.String)]
+
+my_hybrid_lenses :: Bool -> Int -> String -> IO ()
+my_hybrid_lenses b i s = do
+    testdb tracks3 where
+  pred = if b
+         then (dynamic @PredRow @'T.Bool (var @"quantity" !> di i))
+         else (dynamic @PredRow @'T.Bool (var @"album" != ds s))
+  tracks1 = Lens.join albums tracks
+  tracks2 = select pred tracks1
+  tracks3 = dropl @'[ '("track", 'P.String "unknown")] tracks2
+

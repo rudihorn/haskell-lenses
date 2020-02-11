@@ -122,9 +122,10 @@ type family FTV (phrase :: SPhrase) :: [Symbol] where
   FTV ('Var v) = '[v]
   FTV ('InfixAppl op p1 p2) = FTV p1 :++ FTV p2
   FTV ('UnaryAppl op p) = FTV p
-  FTV ('In _ _) = '[]
+  FTV ('In ids _) = ids
   FTV ('Case 'Nothing ps other) = '[] :++ FTV other
   FTV ('Case ('Just p) ps other) = FTV p :++ FTV other
+  FTV ('Dynamic rt _) = VarsEnv rt
 
 
 type family TypVal(c :: Value) :: T.Type where

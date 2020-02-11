@@ -16,6 +16,7 @@ import Tables
 import RowType
 import qualified Predicate as P
 import qualified DynamicPredicate as DP
+import HybridPredicate
 import Data.Text.Format
 import Data.Text.Lazy.Builder
 import qualified QueryPrecedence as QP
@@ -34,7 +35,7 @@ instance (RecoverTables t, RecoverEnv r) => ColumnMap (Lens t r p fds) where
     env = recover_env (Proxy :: Proxy r)
     f (col, typ) = (col, ([table_name], typ))
     table_name = head $ recover_tables (Proxy :: Proxy t)
-  column_map (Select Proxy l) = column_map l
+  column_map (Select _ l) = column_map l
   column_map (Drop l) = column_map l
   column_map (Join l1 l2) = Map.unionWith f (column_map l1) (column_map l2) where
     f (t1, typ) (t2, _) = (t1 ++ t2, typ)
@@ -42,10 +43,10 @@ instance (RecoverTables t, RecoverEnv r) => ColumnMap (Lens t r p fds) where
 class QueryPredicate a where
   query_predicate :: a -> DP.Phrase
 
-instance Recoverable p DP.Phrase => QueryPredicate (Lens t r p fds) where
-  query_predicate Prim = recover @p Proxy
+instance QueryPredicate (Lens t r p fds) where
+  query_predicate Prim = P.Constant (DP.Bool True)
   query_predicate (Drop l) = query_predicate l
-  query_predicate (Select (Proxy :: Proxy pr) l) = DP.simplify $ P.InfixAppl (P.LogicalAnd) (recover @pr Proxy) (query_predicate l)
+  query_predicate (Select (HPred pr) l) = DP.simplify $ P.InfixAppl (P.LogicalAnd) pr (query_predicate l)
   query_predicate (Join l1 l2) = DP.simplify $ P.InfixAppl (P.LogicalAnd) (query_predicate l1) (query_predicate l2)
 
 print_op :: P.Operator -> String
@@ -86,7 +87,7 @@ print_value :: DbHelper -> DP.Value -> IO Builder
 print_value db (DP.Bool False) = return $ build "FALSE" ()
 print_value db (DP.Bool True) = return $ build "TRUE" ()
 print_value db (DP.Int i) = return $ build "{}" (Only i)
-print_value db (DP.String s) = build "{}" <$> Only <$> escStr db s
+print_value db (DP.String s) = escStr db s
 
 print_col :: DbHelper -> String -> ([String], Types.Type) -> IO Builder
 print_col db v (table,_) =
@@ -144,7 +145,7 @@ cols_opt cols = do es <- mapM f $ Map.toList cols
                       add_eqs $ k : map fst others
                       return $ entry k k (head tbls) : others
 
-type LensQueryable t r p = (RecoverTables t, RecoverEnv r, Recoverable p DP.Phrase)
+type LensQueryable t r p = (RecoverTables t, RecoverEnv r)
 
 build_query :: LensQueryable t r p =>
   DbHelper -> Lens t r p fds -> IO Builder

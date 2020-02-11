@@ -62,13 +62,14 @@ print_unary_op P.Negate = "NOT"
 print_unary_op P.UnaryMinus = "-"
 
 print_query_eq :: DbHelper -> ColumnsOpt -> DP.Phrase -> QP.Op -> QP.Op -> IO Builder
-print_query_eq db col p pr npr | compare npr pr == LT = build "({})" <$> Only <$> print_query db col p npr
-                             | otherwise = print_query db col p npr
+print_query_eq db col p pr npr
+  | compare npr pr == LT = build "({})" <$> Only <$> print_query db col p npr
+  | otherwise = print_query db col p npr
 
 print_query_gr :: DbHelper -> ColumnsOpt -> DP.Phrase -> QP.Op -> QP.Op -> IO Builder
 print_query_gr db col p pr npr
-    | compare npr pr == GT = print_query db col p npr
-    | otherwise = build "({})" <$> Only <$> print_query db col p npr
+  | compare npr pr == GT = print_query db col p npr
+  | otherwise = build "({})" <$> Only <$> print_query db col p npr
 
 build_sep :: (Buildable sep, Buildable a) => sep -> [a] -> Builder
 build_sep _ [] = build "" ()

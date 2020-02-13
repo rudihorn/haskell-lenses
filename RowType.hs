@@ -9,7 +9,7 @@ module RowType where
 import Common
 import Data.List
 import Data.Type.Bool
-import Data.Type.Set
+import Data.Type.Set (Proxy(..))
 import GHC.TypeLits
 import Label
 import qualified Types
@@ -201,6 +201,20 @@ instance FromRow (Row '[]) where
 
 instance (Fld.FromField t0, FromRow (Row xs), Value.MakeValue t0, t0 ~ Types.HaskellType t, Types.LensType t0 ~ t) => FromRow (Row ('(k, t) ': xs)) where
   fromRow = Cons <$> (Value.make @t0 <$> field) <*> fromRow @(Row xs)
+
+
+-- Equal
+
+instance Eq (Row e) where
+  RowType.Empty == RowType.Empty = True
+  Cons v vs == Cons v' vs' = v == v' && vs == vs'
+
+
+-- Compare
+
+instance Ord (Row e) where
+  compare Empty RowType.Empty = EQ
+  compare (Cons v vs) (Cons v' vs') = compare v v' <> compare vs vs'
 
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).

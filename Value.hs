@@ -42,3 +42,15 @@ instance MakeValue Bool where
 
 instance MakeValue Int where
   make s = Int s
+
+instance Eq (Value t) where
+  String s == String s' = s == s'
+  Int i == Int i' = i == i'
+  Bool b == Bool b' = b == b'
+  _ == _ = False
+
+instance Ord (Value t) where
+  compare (String s) (String s') = compare s s'
+  compare (Int i) (Int i') = compare i i'
+  compare (Bool b) (Bool b') = compare b b'
+  compare _ _ = LT

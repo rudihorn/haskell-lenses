@@ -22,7 +22,7 @@ import Predicate ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
                   SPhrase, TypesBool, Vars)
 import RowType (Env, Project, ProjectEnv, JoinRowTypes, RecoverEnv,
                 RemoveEnv, OverlappingJoin, VarsEnv)
-import SortedRecords (Revisable, RevisableFd, RecordsSet)
+import SortedRecords (Revisable, RevisableFd, RecordsSet, rows)
 import Tables (DisjointTables, RecoverTables, Tables)
 
 import qualified DynamicPredicate as DP
@@ -103,8 +103,15 @@ data Lens (tables :: Tables) (rt :: Env) (p :: SPhrase) (fds :: [FunDep]) where
     Lens ts rt pred fds ->
     Lens ts rtnew prednew fdsnew
 
+type family RowType l :: Env where
+  RowType (Lens ts rt p fds) = rt
+
 data FromRowHack (rt :: Env) where
   Hack :: FromRow (R.Row rt) => FromRowHack rt
+
+lrows :: (vars ~ R.TupleType rt, R.ToRow rt vars) =>
+  Lens ts rt p fds -> [vars] -> RecordsSet rt
+lrows (l :: Lens ts rt p fds) vars = rows @rt vars
 
 lensToFromRowHack :: Lens ts rt p fds -> FromRowHack rt
 lensToFromRowHack Prim = Hack

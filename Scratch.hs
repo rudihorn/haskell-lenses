@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts, ScopedTypeVariables, TypeApplications, DataKinds #-}
+{-# LANGUAGE FlexibleContexts, ScopedTypeVariables, TypeApplications, DataKinds,
+             AllowAmbiguousTypes #-}
 
 module Scratch where
 
@@ -20,6 +21,7 @@ import LensDatabase (LensQueryable)
 import LensQueryPostgres (query)
 import LensPut
 import FunDep
+import SortedRecords (rows)
 import Data.Set (fromList)
 
 data Test = Test { name :: String, fileQuota :: Int }
@@ -52,8 +54,18 @@ tracks2 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks1
 tracks3 = select (var @"quantity" !> di 2) tracks2
 
 type Output = '[ '("quantity", 'T.Int), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
+type Tracks3 = '[ '("quantity", 'T.Int), '("track", 'T.String), '("rating", 'T.Int), '("album", 'T.String)]
 
 type PredRow = '[ '("quantity", 'T.Int), '("album", 'T.String)]
+
+exampleUnchanged = lrows tracks3
+  [ (4, "Lovesong", 5, "Paris"),
+    (3, "Lullaby", 3, "Show"),
+    (5, "Trust", 4, "Wish")]
+
+examplePut = rows @Tracks3
+    [ (3, "Lullaby", 4, "Show"),
+      (7, "Lovesong", 5, "Disintegration")]
 
 -- my_hybrid_lenses :: Bool -> Int -> String -> IO [Row Output]
 my_hybrid_lenses b i s = do
@@ -63,7 +75,7 @@ my_hybrid_lenses b i s = do
          else (dynamic @PredRow @'T.Bool (var @"album" != ds s))
   tracks1 = Lens.join albums tracks
   tracks2 = select pred tracks1
-  -- tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2
+  tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2
 
 type Fds = '[ '["album"] --> '["quantity"],
               '["quantity"] --> '["date", "rating"]]

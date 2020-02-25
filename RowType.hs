@@ -6,17 +6,21 @@
 
 module RowType where
 
-import Common
 import Data.List
 import Data.Type.Bool
 import Data.Type.Set (Proxy(..), (:++))
 import GHC.TypeLits
+
+import qualified Database.PostgreSQL.Simple.FromField as Fld
+
+import Common
 import Label
-import qualified Types
-import qualified Value
 import Database.PostgreSQL.Simple.FromRow
 import Database.PostgreSQL.Simple.Types(Only(..))
-import qualified Database.PostgreSQL.Simple.FromField as Fld
+
+import qualified Types
+import qualified Value
+import qualified Types as T
 
 type Env = [(Symbol, Types.Type)]
 
@@ -248,11 +252,39 @@ instance Ord (Row e) where
 
 -- Helper Syntax
 
-class ToRow vals rt where
+type family TupleType (e :: Env) :: * where
+  TupleType '[ '(k, t)] = Only (T.HaskellType t)
+  TupleType '[ '(k1, t1), '(k2, t2)] = (T.HaskellType t1, T.HaskellType t2)
+  TupleType '[ '(k1, t1), '(k2, t2), '(k3, t3)] =
+    (T.HaskellType t1, T.HaskellType t2, T.HaskellType t3)
+  TupleType '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4)] =
+    (T.HaskellType t1, T.HaskellType t2, T.HaskellType t3, T.HaskellType t4)
+  TupleType '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4), '(k5, t5)] =
+    (T.HaskellType t1, T.HaskellType t2, T.HaskellType t3, T.HaskellType t4, T.HaskellType t5)
+
+class ToRow rt vals where
   toRow :: vals -> Row rt
 
---instance Value.MakeValue v => ToRow (Only v) '[ '(k, Types.LensType t)] where
---  toRow (Only v) = Cons (Value.make v) Empty
+type VVal v t = (Value.MakeValueEx v t)
+
+mkval :: VVal v t => v -> Value.Value t
+mkval v = Value.makeEx v
+
+instance VVal v t => ToRow '[ '(k, t)] (Only v) where
+  toRow (Only v) = Cons (mkval v) Empty
+
+instance (VVal v1 t1, VVal v2 t2) => ToRow '[ '(k1, t1), '(k2, t2)] (v1, v2) where
+  toRow (v1, v2) = Cons (mkval v1) $ Cons (mkval v2) Empty
+
+instance (VVal v1 t1, VVal v2 t2, VVal v3 t3) => ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3)] (v1, v2, v3) where
+  toRow (v1, v2, v3) = Cons (mkval v1) $ Cons (mkval v2) $ Cons (mkval v3) Empty
+
+instance (VVal v1 t1, VVal v2 t2, VVal v3 t3, VVal v4 t4) => ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4)] (v1, v2, v3, v4) where
+  toRow (v1, v2, v3, v4) = Cons (mkval v1) $ Cons (mkval v2) $ Cons (mkval v3) $ Cons (mkval v4) Empty
+
+instance (VVal v1 t1, VVal v2 t2, VVal v3 t3, VVal v4 t4, VVal v5 t5) => ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4), '(k5, t5)] (v1, v2, v3, v4, v5) where
+  toRow (v1, v2, v3, v4, v5) = Cons (mkval v1) $ Cons (mkval v2) $ Cons (mkval v3) $ Cons (mkval v4) $ Cons (mkval v5) Empty
+
 
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).

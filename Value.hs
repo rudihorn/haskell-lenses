@@ -47,6 +47,18 @@ instance MakeValue Bool where
 instance MakeValue Int where
   make s = Int s
 
+class MakeValueEx s t where
+  makeEx :: s -> Value t
+
+instance Integral a => MakeValueEx a 'T.Int where
+  makeEx v = Int (fromIntegral v)
+
+instance MakeValueEx String 'T.String where
+  makeEx v = String v
+
+instance MakeValueEx Bool 'T.Bool where
+  makeEx v = Bool v
+
 instance Eq (Value t) where
   String s == String s' = s == s'
   Int i == Int i' = i == i'

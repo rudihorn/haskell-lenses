@@ -16,7 +16,7 @@ import Delta (Delta)
 import DynamicPredicate (DPhrase)
 import Label (IsSubset, AdjustOrder)
 import FunDep (FunDep, Left, Right)
-import RowType (append, Env, Row, Project, ProjectEnv, VarsEnv)
+import RowType (append, Env, Row, Project, ProjectEnv, VarsEnv, ToRow, toRow)
 
 import qualified DynamicPredicate as DP
 import qualified Label as L
@@ -93,3 +93,6 @@ instance (RevisableFd fd rt rt', Revisable fds rt rt') => Revisable (fd ': fds) 
 
 merge :: forall fds rt. Revisable fds rt rt => RecordsSet rt -> RecordsSet rt -> RecordsSet rt
 merge r s = revise @fds r s `Set.union` s
+
+rows :: forall rt vals. (vals ~ R.TupleType rt, ToRow rt vals) => [vals] -> RecordsSet rt
+rows vals = Set.fromList $ map (toRow @rt) vals

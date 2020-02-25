@@ -21,8 +21,10 @@ import LensDatabase (LensQueryable)
 import LensQueryPostgres (query)
 import LensPut
 import FunDep
-import SortedRecords (rows)
+import SortedRecords (RecordsSet, rows)
+import Delta (fromSet)
 import Data.Set (fromList)
+import Tables (RecoverTables)
 
 data Test = Test { name :: String, fileQuota :: Int }
 
@@ -39,6 +41,16 @@ testdb (l :: Lens t r p fds) = do
   res <- query conn l
   -- mapM_ Prelude.print res
   return res
+
+testput :: (RecoverTables ts, RecoverEnv rt) =>
+  Lens ts rt p fds -> RecordsSet rt -> IO ()
+testput l delta =
+  do conn <- connect defaultConnectInfo {
+         connectDatabase = "links",
+         connectUser = "links",
+         connectPassword = "links"
+       }
+     put conn l (Delta.fromSet delta)
 
 -- Bohanonn et al. PODS 2016 examples
 albums = prim @"albums" @'[ '("album", 'T.String), '("quantity", 'T.Int)]

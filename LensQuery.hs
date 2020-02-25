@@ -109,9 +109,10 @@ print_query db cols (P.UnaryAppl op a) pr =
      return $ build "{} {}" (print_unary_op op, arg)
 print_query db _ (P.In _ []) _ =
   return $ build "FALSE" ()
-print_query db _ (P.In cs vals) _ =
+print_query db cols (P.In cs vals) pr =
   do vals <- mapM (build_vals) vals
-     return $ build "({}) IN ({})" (build_sep_str ", " cs, build_sep_str ", " $ vals) where
+     pcs <- mapM (\v -> print_query db cols (P.Var v) pr) cs
+     return $ build "({}) IN ({})" (build_sep_str ", " pcs, build_sep_str ", " $ vals) where
   build_vals vs =
     do vals <- mapM (print_value db) vs
        return $ build "({})" $ Only $ build_sep_str ", " $ vals

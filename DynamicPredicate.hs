@@ -6,23 +6,22 @@
 
 module DynamicPredicate where
 
-import Common
 import Data.Type.Set
 import GHC.TypeLits
-import qualified Types
-import RowType
-import qualified Predicate as P
-import qualified QueryPrecedence as QP
 import Data.Text.Format
 import Data.Text.Lazy.Builder
 import Data.Text.Buildable(Buildable)
-import qualified Data.Map.Strict as Map
-import Data.Maybe
+
+import Common
+
+import qualified Predicate as P
+import qualified QueryPrecedence as QP
 
 data Value where
   Bool :: Bool -> Value
   Int :: Int -> Value
   String :: String -> Value
+  deriving (Eq, Ord)
 
 -- data Predicate (r :: Env) where
 --  Constant :: Value -> Predicate '[]
@@ -30,6 +29,7 @@ data Value where
 --  InfixAppl :: Operator -> Predicate r1 -> Predicate r2 -> Predicate ()
 
 type Phrase = P.Phrase String Value
+type DPhrase = Phrase
 
 instance Recoverable b Bool => Recoverable ('P.Bool b) Value where
   recover Proxy = Bool (recover (Proxy :: Proxy b))
@@ -73,6 +73,9 @@ conjunction (x : y : xs) = P.InfixAppl P.LogicalAnd x $ conjunction $ y : xs
 conjunction [x] = x
 conjunction [] = P.Constant (Bool True)
 
+not :: P.Phrase id Value -> P.Phrase id Value
+not p = P.UnaryAppl P.Negate p
+
 print_value :: Value -> IO Builder
 print_value (Bool False) = return $ build "false" ()
 print_value (Bool True) = return $ build "true" ()
@@ -81,8 +84,8 @@ print_value (String s) = return $ build "{}" (Only s)
 
 print_op :: P.Operator -> String
 print_op P.Plus = "+"
-print_op P.LogicalAnd = "∧"
-print_op P.LogicalOr = "∨"
+print_op P.LogicalAnd = "AND"
+print_op P.LogicalOr = "OR"
 print_op P.Equal = "="
 print_op P.LessThan = "<"
 print_op P.GreaterThan = ">"
@@ -139,3 +142,7 @@ print_query (P.Case inp cases other) _ =
      do cond <- print_query key QP.first
         act <- print_query val QP.first
         return $ build "WHEN {} THEN {}" (cond, act)
+
+print :: Phrase -> IO Builder
+print p = print_query p QP.first
+

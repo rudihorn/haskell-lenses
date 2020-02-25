@@ -7,32 +7,36 @@
 module Value where
 
 import GHC.TypeLits
-import qualified Types
+import Data.Type.Set (Proxy(..))
 
-data Value (typ :: Types.Type) where
-  String :: String -> Value 'Types.String
-  Symbol :: Symbol -> Value 'Types.String
-  Int :: Int -> Value 'Types.Int
-  Bool :: Bool -> Value 'Types.Bool
+import Common
 
-valof :: Value t -> (Types.HaskellType t)
+import qualified Types as T
+
+data Value (typ :: T.Type) where
+  String :: String -> Value 'T.String
+  Symbol :: Symbol -> Value 'T.String
+  Int :: Int -> Value 'T.Int
+  Bool :: Bool -> Value 'T.Bool
+
+valof :: Value t -> (T.HaskellType t)
 valof (String s) = s
 valof (Symbol _) = "<error>"
 valof (Int i) = i
 valof (Bool b) = b
 
-instance Show (Value 'Types.String) where
+instance Show (Value 'T.String) where
   show (String s) = show s
   show (Symbol _) = "<error>"
 
-instance Show (Value 'Types.Int) where
+instance Show (Value 'T.Int) where
   show (Int s) = show s
 
-instance Show (Value 'Types.Bool) where
+instance Show (Value 'T.Bool) where
   show (Bool s) = show s
 
 class MakeValue t where
-  make :: t -> Value (Types.LensType t)
+  make :: t -> Value (T.LensType t)
 
 instance MakeValue String where
   make s = String s
@@ -54,3 +58,6 @@ instance Ord (Value t) where
   compare (Int i) (Int i') = compare i i'
   compare (Bool b) (Bool b') = compare b b'
   compare _ _ = LT
+
+instance KnownSymbol s => Recoverable ('Symbol s) (Value 'T.String) where
+  recover Proxy = String (symbolVal @s Proxy)

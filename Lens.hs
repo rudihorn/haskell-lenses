@@ -6,78 +6,129 @@
 
 module Lens where
 
+import GHC.TypeLits
+import Data.Type.Set ((:++), Proxy(..))
+import Database.PostgreSQL.Simple.FromRow
+
 import Common
-import Tables
-import Label
-import Data.Type.Set
-import Predicate
+import Affected (Affected, ToDynamic)
+import CompilePredicate (LookupMap)
+--import FunDep (DropColumn, FunDep, InTreeForm, SplitFDs, Outputs)
 import FunDep
-import RowType
-import qualified Types as T
-import qualified Value as V
+import HybridPredicate -- (HPhrase)
+import Label (NoDuplicates, IsDisjoint, SymAsSet)
+import Predicate ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
+                  HasCols, LJDI, ReplacePredicate, Simplify,
+                  SPhrase, TypesBool, Vars)
+import RowType (Env, Project, ProjectEnv, JoinRowTypes, RecoverEnv,
+                RemoveEnv, OverlappingJoin, VarsEnv)
+import SortedRecords (Revisable, RevisableFd, RecordsSet)
+import Tables (DisjointTables, RecoverTables, Tables)
+
 import qualified DynamicPredicate as DP
-import HybridPredicate
+import qualified Types as T
+import qualified Predicate as P
+import qualified RowType as R
+import qualified SortedRecords as RT
+
 
 type family IsIgnoresOutputs (phrase :: SPhrase) (fds :: [FunDep]) :: Bool where
   IsIgnoresOutputs p fds = IsDisjoint (FTV p) (Outputs fds)
 
 type IgnoresOutputs p fds = IsIgnoresOutputs p fds ~ 'True
 
-type DefaultPredicate = Predicate.B 'True
+type DefaultPredicate = P.B 'True
 
-type Lensable rt fds = NoDuplicates rt
+type Lensable rt fds = (NoDuplicates rt, FromRow (R.Row rt),
+                        ToDynamic rt, Recoverable (VarsEnv rt) [String])
 
-type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 = (DisjointTables ts1 ts2, OverlappingJoin rt1 rt2, IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2, InTreeForm fds1, InTreeForm fds2, RecoverEnv rt1, RecoverEnv rt2, RecoverTables ts1, RecoverTables ts2)
+type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =
+  (rtnew ~ JoinRowTypes rt1 rt2,
+   DisjointTables ts1 ts2, OverlappingJoin rt1 rt2,
+   IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2,
+   InTreeForm fds1, InTreeForm fds2, RecoverEnv rt1,
+   RecoverEnv rt2, RecoverTables ts1, RecoverTables ts2,
+   FromRow (R.Row rtnew),
+   ProjectEnv (VarsEnv rt1) rtnew ~ rt1,
+   ProjectEnv (VarsEnv rt2) rtnew ~ rt2,
+   Revisable (TopologicalSort fds1) rt1 rt1,
+   Revisable (TopologicalSort fds2) rt2 rt2,
+   Project (VarsEnv rt1) rtnew,
+   Project (VarsEnv rt2) rtnew,
+   Affected fds1 rt1,
+   Affected fds2 rt2,
+   Recoverable (R.JoinColumns rt1 rt2) [String],
+   Project (R.JoinColumns rt1 rt2) rt1,
+   Project (R.JoinColumns rt1 rt2) rt2,
+   ToDynamic (ProjectEnv (R.JoinColumns rt1 rt2) rt1),
+   ToDynamic (ProjectEnv (R.JoinColumns rt1 rt2) rt2),
+   RT.Joinable rt1 rt2 rtnew,
+   FromRow (R.Row rt1),
+   FromRow (R.Row rt2))
 
-type Selectable rt p pred fds = (TypesBool rt p, IgnoresOutputs pred fds, InTreeForm fds)
+type Selectable rt p pred fds pnew =
+  (pnew ~ Simplify (p :& pred),
+   TypesBool rt p, IgnoresOutputs pred fds, InTreeForm fds,
+   Affected fds rt, LookupMap rt, Revisable (TopologicalSort fds) rt rt,
+   FromRow (R.Row rt))
 
-type Droppable env rt pred = (HasCols env rt, LJDI (Vars env) pred, DefVI env pred, RecoverEnv rt)
+type Droppable env key rt pred fds rtnew prednew fdsnew =
+  (rtnew ~ RemoveEnv (Vars env) rt,
+   prednew ~ Simplify (ReplacePredicate env pred),
+   fdsnew ~ DropColumn (Vars env) fds,
+   HasCols env rt, LJDI (Vars env) pred, DefVI env pred,
+   RT.Joinable rtnew (EvalRowType env) rt, RecoverEnv rt,
+   EvalEnvRow env, FromRow (R.Row rtnew),
+   RevisableFd (key --> Vars env) rt (R.ProjectEnv (key :++ P.Vars env) rt),
+   Recoverable (SymAsSet key) [String],
+   Project (SymAsSet key) rtnew,
+   Affected '[key --> Vars env] rtnew,
+   FromRow (R.Row (ProjectEnv (key :++ P.Vars env) rt)),
+   RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 
 data Lens (tables :: Tables) (rt :: Env) (p :: SPhrase) (fds :: [FunDep]) where
   Prim :: Lensable rt fds => Lens '[table] rt DefaultPredicate (SplitFDs fds)
-  Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 =>
+  Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =>
     Lens ts1 rt1 p1 fds1 ->
     Lens ts2 rt2 p2 fds2 ->
-    Lens (ts1 :++ ts2) (JoinRowTypes rt1 rt2) (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
-  Select :: Selectable rt p pred fds =>
+    Lens (ts1 :++ ts2) rtnew (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
+  Select :: Selectable rt p pred fds pnew =>
     HPhrase p ->
     Lens ts rt pred fds ->
-    Lens ts rt (Simplify (p :& pred)) fds
+    Lens ts rt pnew fds
   Drop ::
-    (Droppable env rt pred) =>
+    Droppable env (key :: [Symbol]) rt pred fds rtnew prednew fdsnew =>
+    Proxy key ->
+    Proxy env ->
     Lens ts rt pred fds ->
-    Lens ts (RemoveEnv (Vars env) rt) (Simplify (ReplacePredicate env pred)) fds
+    Lens ts rtnew prednew fdsnew
+
+data FromRowHack (rt :: Env) where
+  Hack :: FromRow (R.Row rt) => FromRowHack rt
+
+lensToFromRowHack :: Lens ts rt p fds -> FromRowHack rt
+lensToFromRowHack Prim = Hack
+lensToFromRowHack (Select _ _) = Hack
+lensToFromRowHack (Drop _ _ _) = Hack
+lensToFromRowHack (Join _ _) = Hack
 
 prim :: forall table rt fds. Lensable rt fds => Lens '[table] rt DefaultPredicate (SplitFDs fds)
 prim = Prim @rt @fds @table
 
-select :: forall p ts rt pred fds. Selectable rt p pred fds =>
+select :: forall p ts rt pred fds pnew. Selectable rt p pred fds pnew =>
   HPhrase p -> Lens ts rt pred fds -> Lens ts rt (Simplify (p :& pred)) fds
-select pred l = Select @rt @p @pred @fds pred l
+select pred l = Select @rt @p @pred @fds @pnew pred l
 
-dropl :: forall env rt pred ts fds. (Droppable env rt pred, RecoverEnv rt ) =>
-  Lens ts rt pred fds -> Lens ts (RemoveEnv (Vars env) rt) (Simplify (ReplacePredicate env pred)) fds
-dropl l = Drop @env @rt @pred @ts @fds l
+dropl :: forall env (key :: [Symbol]) rt pred ts fds rtnew prednew fdsnew. (Droppable env key rt pred fds rtnew prednew fdsnew, RecoverEnv rt ) =>
+  Lens ts rt pred fds -> Lens ts rtnew prednew fdsnew
+dropl l = Drop @env @key @rt @pred @fds @rtnew @prednew @fdsnew @ts Proxy Proxy l
 
-join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 =>
+join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =>
     Lens ts1 rt1 p1 fds1 ->
     Lens ts2 rt2 p2 fds2 ->
-    Lens (ts1 :++ ts2) (JoinRowTypes rt1 rt2) (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
+    Lens (ts1 :++ ts2) rtnew (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
 join l1 l2 = Join l1 l2
 
 lens1 = prim @"test1" @'[ '("A", 'T.Int), '("B", 'T.String)] @'[ '["A"] --> '["B"]]
 lens2 = select (var @"A" !> i @30) lens1
-lens3 = dropl @'[ '("A", 'Int 40)] lens2
-
--- Bohanonn et al. PODS 2016 examples
-albums = prim @"albums" @'[ '("album", 'T.String), '("quantity", 'T.Int)]
-  @'[ '["album"] --> '["quantity"]]
-
-tracks = prim @"tracks" @'[ '("track", 'T.String), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
-  @'[ '["track"] --> '["date", "rating"]]
-
-tracks1 = join albums tracks
-
-tracks2 = dropl @'[ '("track", 'String "unknown")] tracks1
-
-tracks3 = select (var @"quantity" !> di 2) tracks2
+lens3 = dropl @'[ '("B", 'P.String "test")] @'["A"] lens2

@@ -9,12 +9,13 @@ module RowType where
 import Common
 import Data.List
 import Data.Type.Bool
-import Data.Type.Set (Proxy(..))
+import Data.Type.Set (Proxy(..), (:++))
 import GHC.TypeLits
 import Label
 import qualified Types
 import qualified Value
 import Database.PostgreSQL.Simple.FromRow
+import Database.PostgreSQL.Simple.Types(Only(..))
 import qualified Database.PostgreSQL.Simple.FromField as Fld
 
 type Env = [(Symbol, Types.Type)]
@@ -141,6 +142,27 @@ update_str v row = update @s v row
 update_int :: forall s env. (UpdateRow s 'Types.Int env (FindMaybe env s)) => Int -> Row env -> Row (SetType s 'Types.Int env (FindMaybe env s))
 update_int v row = update @s v row
 
+class IntRevisable (rt :: Env) (rt' :: Env) (i :: Maybe InEnvEvid) where
+  intrevise :: Row rt -> Row rt' -> Row rt
+
+type family RevisableEvid (rt :: Env) (rt' :: Env) where
+  RevisableEvid rt '[] = 'Nothing
+  RevisableEvid rt ('(k, v) ': rst) = FindMaybe rt k
+
+instance IntRevisable rt '[] ('Nothing) where
+  intrevise r _ = r
+
+instance IntRevisable rs1 rs2 (RevisableEvid rs1 rs2) =>
+  IntRevisable ('(k, t) ':  rs1) ('(k, t) ': rs2) ('Just 'Take) where
+  intrevise (Cons _ row) (Cons v rst) = Cons v (intrevise @rs1 @rs2 @(RevisableEvid rs1 rs2) row rst)
+
+instance IntRevisable rs1 rs2 ('Just evid) => IntRevisable ('(k, t) ': rs1) rs2 ('Just ('Skip evid)) where
+  intrevise (Cons v row) rs = Cons v (intrevise @rs1 @rs2 @('Just evid) row rs)
+
+type Revisable rs1 rs2 = IntRevisable rs1 rs2 (RevisableEvid rs1 rs2)
+
+revise :: forall rs1 rs2. Revisable rs1 rs2 => Row rs1 -> Row rs2 -> Row rs1
+revise r s = intrevise @rs1 @rs2 @(RevisableEvid rs1 rs2) r s
 
 -- Projection
 
@@ -167,19 +189,26 @@ normalise (r :: Row e) = project @(SymAsSet (VarsEnv e)) r
 
 -- Join
 
-type family JoinColumns (e1 :: Env) (e2 :: Env) :: Env where
-  JoinColumns e1 e2 = ProjectEnv (SetIntersection (VarsEnv e1) (VarsEnv e2)) e1
+type family JoinColumns (e1 :: Env) (e2 :: Env) :: [Symbol] where
+  JoinColumns e1 e2 = SetIntersection (VarsEnv e1) (VarsEnv e2)
+
+type family JoinEnv (e1 :: Env) (e2 :: Env) :: Env where
+  JoinEnv e1 e2 = ProjectEnv (SetIntersection (VarsEnv e1) (VarsEnv e2)) e1
 
 type family IsOverlappingJoinEx (e1 :: Env) (e2 :: Env) (join :: Env) :: Bool where
   IsOverlappingJoinEx e1 e2 join = Equal (ProjectEnv (VarsEnv join) e2) join
 
 type family IsOverlappingJoin (e1 :: Env) (e2 :: Env) :: Bool where
-  IsOverlappingJoin e1 e2 = IsOverlappingJoinEx e1 e2 (JoinColumns e1 e2)
+  IsOverlappingJoin e1 e2 = IsOverlappingJoinEx e1 e2 (JoinEnv e1 e2)
 
 type OverlappingJoin e1 e2 = OkOrError (IsOverlappingJoin e1 e2) ('Text "The types for the join column don't match.")
 
 type family JoinRowTypes (e1 :: Env) (e2 :: Env) :: Env where
-  JoinRowTypes e1 e2 = (RemoveEnv (VarsEnv (JoinColumns e1 e2)) e1) :++ e2
+  JoinRowTypes e1 e2 = (RemoveEnv (VarsEnv (JoinEnv e1 e2)) e1) :++ e2
+
+append :: Row rt -> Row rt' -> Row (rt :++ rt')
+append Empty rt = rt
+append (Cons v rt) rt' = Cons v (append rt  rt')
 
 -- Examples
 
@@ -215,6 +244,15 @@ instance Eq (Row e) where
 instance Ord (Row e) where
   compare Empty RowType.Empty = EQ
   compare (Cons v vs) (Cons v' vs') = compare v v' <> compare vs vs'
+
+
+-- Helper Syntax
+
+class ToRow vals rt where
+  toRow :: vals -> Row rt
+
+--instance Value.MakeValue v => ToRow (Only v) '[ '(k, Types.LensType t)] where
+--  toRow (Only v) = Cons (Value.make v) Empty
 
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).

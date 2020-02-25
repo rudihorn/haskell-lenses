@@ -2,9 +2,7 @@
 
 module Scratch where
 
-import Control.Monad
-import Control.Applicative
-import Control.Monad.State.Lazy
+import Affected (affected)
 import Database.PostgreSQL.Simple(query_, connect, defaultConnectInfo, connectDatabase, connectUser, connectPassword)
 import Database.PostgreSQL.Simple.Types(Query(..), fromQuery)
 import Database.PostgreSQL.Simple.Internal(escapeIdentifier, escapeStringConn)
@@ -18,49 +16,46 @@ import qualified Predicate as P
 import qualified DynamicPredicate as DP
 import HybridPredicate
 import Data.Text.Format
-import Data.Text.Lazy.Builder(toLazyText)
-import qualified Data.String as BS
-import Data.ByteString.UTF8 as BLU
-import Data.Either
-import Data.ByteString.Lazy as BL
-import Data.Text.Lazy as TL
-import Data.Text.Lazy.Encoding as TLE
-import Data.Text.Encoding as TSE
-
-
-incr = do id <- get
-          put $ id + 1
-          return $ id
-
-foo = do foo <- incr
-         x <- incr
-         return (foo,x)
-
-bla = runState foo 0
+import LensDatabase (LensQueryable)
+import LensQueryPostgres (query)
+import LensPut
+import FunDep
+import Data.Set (fromList)
 
 data Test = Test { name :: String, fileQuota :: Int }
 
 instance FromRow Test where
   fromRow = Test <$> field <*> field
 
-testdb :: (FromRow (Row r), Fields r, LensQueryable t r p) => Lens t r p fds -> IO ()
+testdb :: (FromRow (Row r), Fields r, LensQueryable t r p) => Lens t r p fds -> IO [Row r]
 testdb (l :: Lens t r p fds) = do
   conn <- connect defaultConnectInfo {
     connectDatabase = "links",
     connectUser = "links",
     connectPassword = "links"
   }
-  let lft f arg = build "{}" <$> Only <$> BLU.toString <$> fromRight "error" <$> f conn (BLU.fromString arg)
-  let lft2 f arg = build "'{}'" <$> Only <$> lft f arg
-  let db = (lft escapeIdentifier, lft2 escapeStringConn)
-  q <- build_query db l
-  -- for debugging:
-  -- do Prelude.print q
-  mapM_ Prelude.print =<< (query_ conn (Query { fromQuery = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q}) :: IO [Row r])
+  res <- query conn l
+  -- mapM_ Prelude.print res
+  return res
+
+-- Bohanonn et al. PODS 2016 examples
+albums = prim @"albums" @'[ '("album", 'T.String), '("quantity", 'T.Int)]
+  @'[ '["album"] --> '["quantity"]]
+
+tracks = prim @"tracks" @'[ '("track", 'T.String), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
+  @'[ '["track"] --> '["date", "rating"]]
+
+tracks1 = join albums tracks
+
+tracks2 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks1
+
+tracks3 = select (var @"quantity" !> di 2) tracks2
+
+type Output = '[ '("quantity", 'T.Int), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
 
 type PredRow = '[ '("quantity", 'T.Int), '("album", 'T.String)]
 
-my_hybrid_lenses :: Bool -> Int -> String -> IO ()
+-- my_hybrid_lenses :: Bool -> Int -> String -> IO [Row Output]
 my_hybrid_lenses b i s = do
     testdb tracks3 where
   pred = if b
@@ -68,5 +63,12 @@ my_hybrid_lenses b i s = do
          else (dynamic @PredRow @'T.Bool (var @"album" != ds s))
   tracks1 = Lens.join albums tracks
   tracks2 = select pred tracks1
-  tracks3 = dropl @'[ '("track", 'P.String "unknown")] tracks2
+  -- tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2
 
+type Fds = '[ '["album"] --> '["quantity"],
+              '["quantity"] --> '["date", "rating"]]
+
+affect = do
+  res <- testdb tracks3
+  q <- DP.print $ affected @Fds $ fromList res
+  return q

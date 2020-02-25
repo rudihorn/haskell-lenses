@@ -47,6 +47,11 @@ type family IsElement (s :: k) (r :: [k]) :: Bool where
   IsElement x (x ': xs) = 'True
   IsElement x (y ': ys) = IsElement x ys
 
+type family Subtract (s :: [k]) (t :: [k]) :: [k] where
+  Subtract '[] _ = '[]
+  Subtract (x ': xs) ys =
+    AddIf (Not (IsElement x ys)) x (Subtract xs ys)
+
 type family IsNoDuplicates (s :: [k]) :: Bool where
   IsNoDuplicates '[] = 'True
   IsNoDuplicates (x ': xs) = Not (IsElement x xs) && IsNoDuplicates xs
@@ -88,6 +93,10 @@ type family SetIntersection (l :: [Symbol]) (r :: [Symbol]) :: [Symbol] where
 type family Len (l :: [k]) :: Nat where
   Len '[] = 0
   Len (_ ': xs) = 1 + (Len xs)
+
+type family AdjustOrder (l :: [k]) (o :: [k]) :: [k] where
+  AdjustOrder _ '[] = '[]
+  AdjustOrder ls (x ': xs) = AddIf (IsElement x ls) x (AdjustOrder ls xs)
 
 data SymFlag = SymFMin | SymFMax
 

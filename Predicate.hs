@@ -1,18 +1,22 @@
 {-# LANGUAGE GADTs, DataKinds, KindSignatures, TypeOperators, TypeFamilies,
              MultiParamTypeClasses, FlexibleInstances, PolyKinds,
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
-             ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving #-}
+             ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
+             AllowAmbiguousTypes, TypeApplications #-}
 
 module Predicate where
 
-import Common
-import RowType
 import GHC.TypeLits
-import Data.List
-import Data.Type.Set
 import Data.Type.Bool
+import Data.Type.Set
+
+import Common
+import RowType (Env, Row, VarsEnv)
 import Label
+
 import qualified Types as T
+import qualified RowType as RT
+import qualified Value as V
 
 data UnaryOperator where
   Negate :: UnaryOperator
@@ -64,7 +68,7 @@ data Phrase id v where
   UnaryAppl :: UnaryOperator -> Phrase id v -> Phrase id v
   In :: [id] -> [[v]] -> Phrase id v
   Case :: Maybe (Phrase id v) -> [(Phrase id v, Phrase id v)] -> Phrase id v -> Phrase id v
-  Dynamic :: RowType.Env -> T.Type -> Phrase id v
+  Dynamic :: RT.Env -> T.Type -> Phrase id v
 
 type SPhrase = Phrase Symbol Value
 
@@ -128,7 +132,7 @@ type family FTV (phrase :: SPhrase) :: [Symbol] where
   FTV ('Dynamic rt _) = VarsEnv rt
 
 
-type family TypVal(c :: Value) :: T.Type where
+type family TypVal (c :: Value) :: T.Type where
   TypVal ('Bool _) = 'T.Bool
   TypVal ('Int _) = 'T.Int
   TypVal ('String _) = 'T.String
@@ -203,6 +207,31 @@ type family IsLJDI (vs :: [Symbol]) (phrase :: SPhrase) :: Bool where
 type LJDI vs p = IsLJDI vs p ~ 'True
 
 type EvalEnv = [(Symbol,Value)]
+
+type family EvalRowType (e :: EvalEnv) :: Env where
+  EvalRowType '[] = '[]
+  EvalRowType ('(k, v) ': xs) = '(k, TypVal v) ': EvalRowType xs
+
+instance Recoverable ('Bool 'False) (V.Value 'T.Bool) where
+  recover Proxy = V.Bool False
+
+instance Recoverable ('Bool 'True) (V.Value 'T.Bool) where
+  recover Proxy = V.Bool True
+
+instance KnownNat i => Recoverable ('Int i) (V.Value 'T.Int) where
+  recover Proxy = V.Int (fromIntegral $ natVal @i Proxy)
+
+instance KnownSymbol s => Recoverable ('String s) (V.Value 'T.String) where
+  recover Proxy = V.String (symbolVal @s Proxy)
+
+class EvalEnvRow (e :: EvalEnv) where
+  toRow :: Row (EvalRowType e)
+
+instance EvalEnvRow '[] where
+  toRow = RT.Empty
+
+instance (EvalEnvRow env, Recoverable v (V.Value (TypVal v))) => EvalEnvRow ('(k, v) ': env) where
+  toRow = RT.Cons (recover @v Proxy) (toRow @env)
 
 type family Vars (env :: EvalEnv) :: [Symbol] where
   Vars '[] = '[]

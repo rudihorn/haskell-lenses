@@ -20,7 +20,7 @@ import HybridPredicate (HPhrase(..))
 import Label (IsSubset, AdjustOrder)
 import Lens (Droppable, Lens(..))
 import LensDatabase (LensDatabase(..), LensQuery, Columns, query, query_ex)
-import LensQuery (build_insert, column_map, query_predicate)
+import LensQuery (build_delete, build_insert, column_map, query_predicate)
 import RowType (Env, JoinColumns, Project, ProjectEnv, VarsEnv)
 import SortedRecords (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
 import Tables (RecoverTables, recover_tables)
@@ -44,10 +44,17 @@ put_delta :: forall c ts rt p fds.
   (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c) =>
   c -> (Lens ts rt p fds) -> RecordsDelta rt -> IO ()
 
-put_delta c Prim delta_m =
-  do qinsert <- build_insert c tbl $ positive delta_m
+put_delta c (Prim :: Lens ts rt p fds) delta_m =
+  do qinsert <- build_insert c tbl $ Map.elems mapIns
+     qdelete <- mapM (build_delete c tbl) $ Map.keys mapDel
+     v <- mapM Prelude.print qdelete
      Prelude.print qinsert where
-  --mkMap set = map (\e -> project @(StartingPoints (Lefts fds) (Rights fds)))$ Set.fromList set
+  mkMap set = Map.fromList $ map (\e -> (R.project @(TableKey fds) @rt e, e)) $ Set.toList set
+  mapPos = mkMap $ positive delta_m
+  mapNeg = mkMap $ negative delta_m
+  mapIns = mapPos Map.\\ mapNeg
+  mapDel = mapNeg Map.\\ mapPos
+  mapUpd = mapPos `Map.intersection` mapNeg
   tbl = head $ recover_tables @ts Proxy
 
 put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p1 fds1)) delta_n =
@@ -106,7 +113,7 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
   pjoin (l :: Lens tsl rtl pl fdsl) delta =
     DP.conjunction
       [P.In (recover @(JoinColumns rt1 rt2) Proxy)
-         (toDPList $ project @(JoinColumns rt1 rt2) (delta_union delta)),
+         (toDPList $ Set.toList $ project @(JoinColumns rt1 rt2) (delta_union delta)),
        query_predicate l]
 
 

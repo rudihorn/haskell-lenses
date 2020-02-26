@@ -35,8 +35,8 @@ instance ToDynamic '[] where
 instance ToDynamic xs => ToDynamic (x ': xs) where
   toDynamic (R.Cons v rw) = toDPValue v : toDynamic rw
 
-toDPList :: ToDynamic rt => RecordsSet rt -> [[DP.Value]]
-toDPList = map toDynamic . Set.toList
+toDPList :: ToDynamic rt => [R.Row rt] -> [[DP.Value]]
+toDPList = map toDynamic
 
 
 class Affected (fds :: [FunDep]) (rt :: Env) where
@@ -48,5 +48,5 @@ instance Affected '[] rt where
 instance (Recoverable (Left fd) [String], R.Project (Left fd) rt, Affected fds rt, ToDynamic (R.ProjectEnv (Left fd) rt)) =>
   Affected (fd ': fds) rt where
   affected rt = DP.disjunction [
-    P.In (recover @(Left fd) Proxy) (toDPList $ project @(Left fd) rt),
+    P.In (recover @(Left fd) Proxy) (toDPList $ Set.toList $ project @(Left fd) rt),
     affected @fds rt]

@@ -161,3 +161,6 @@ printLabList l = ppList " " $ labListVal l
 instance LabListKnown (LabList s) => Show (LabList s) where
   show _ = printLabList (LabList :: LabList s)
 
+type family Concat (t :: [[k]]) :: [k] where
+  Concat '[] = '[]
+  Concat (x ': xs) = x :++ Concat xs

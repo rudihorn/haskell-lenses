@@ -9,7 +9,7 @@ module LensQuery where
 import qualified Data.Set as Set
 
 import Common
-import Affected (ToDynamic, toDPList)
+import Affected (ToDynamic, toDPList, toDynamic)
 import qualified Data.Map.Strict as Map
 import Data.Type.Set
 import Data.Maybe
@@ -172,14 +172,30 @@ build_query db (l :: Lens t r p fds) = build_query_ex db tbls cols cols_map p wh
 build_insert_ex :: forall db.
   (LensDatabase db) => db -> String -> [String] -> [[DP.Value]] -> IO Builder
 build_insert_ex db tbl cols vals =
-  do valstr <- build_sep_str ", " <$> mapM build_record vals
-     return $ build "INSERT INTO {} ({}) VALUES {}" (tbl, colstr, valstr) where
-  colstr = build_sep_str ", " cols
+  do etbl <- escapeId db tbl
+     colstr <- build_sep_str ", " <$> mapM (escapeId db) cols
+     valstr <- build_sep_str ", " <$> mapM build_record vals
+     return $ build "INSERT INTO {} ({}) VALUES {}" (etbl, colstr, valstr) where
   build_record rs = build "({})" <$> Only <$> build_sep_str ", " <$> mapM (print_value db) rs
 
 build_insert ::
   forall db rt. (ToDynamic rt, Recoverable (VarsEnv rt) [String], LensDatabase db) =>
-  db -> String -> RecordsSet rt -> IO Builder
+  db -> String -> [Row rt] -> IO Builder
 build_insert db tbl rs = build_insert_ex db tbl cols vals where
   vals = toDPList rs
   cols = recover @(VarsEnv rt) @[String] Proxy
+
+build_delete_ex :: forall db. (LensDatabase db) => db -> String -> [(String, DP.Value)] -> IO Builder
+build_delete_ex db tbl match =
+  do etbl <- escapeId db tbl
+     wher <- print_query db colsOpt pred QP.first
+     return $ build "DELETE FROM {} WHERE {}" (etbl, wher) where
+  colsOpt = Map.fromList $ map (\(k,_) -> (k,("",k))) match
+  pred = DP.conjunction $ map (\(k,v) -> P.InfixAppl P.Equal (P.Var k) (P.Constant v)) match
+
+build_delete :: forall db rt. (ToDynamic rt, Recoverable (VarsEnv rt) [String], LensDatabase db) =>
+  db -> String -> Row rt -> IO Builder
+build_delete db tbl match = build_delete_ex db tbl matchex where
+  cols = recover @(VarsEnv rt) Proxy
+  vals = toDynamic match
+  matchex = zip cols vals

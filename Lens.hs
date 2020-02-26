@@ -39,8 +39,12 @@ type IgnoresOutputs p fds = IsIgnoresOutputs p fds ~ 'True
 
 type DefaultPredicate = P.B 'True
 
-type Lensable rt fds = (NoDuplicates rt, FromRow (R.Row rt),
-                        ToDynamic rt, Recoverable (VarsEnv rt) [String])
+type Lensable rt fds fdsnew = (fdsnew ~ SplitFDs fds,
+                        NoDuplicates rt, FromRow (R.Row rt),
+                        ToDynamic rt, Recoverable (VarsEnv rt) [String],
+                        Project (TableKey fdsnew) rt,
+                        ToDynamic (ProjectEnv (TableKey fdsnew) rt),
+                        Recoverable (VarsEnv (ProjectEnv (TableKey fdsnew) rt)) [String])
 
 type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =
   (rtnew ~ JoinRowTypes rt1 rt2,
@@ -87,7 +91,7 @@ type Droppable env key rt pred fds rtnew prednew fdsnew =
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 
 data Lens (tables :: Tables) (rt :: Env) (p :: SPhrase) (fds :: [FunDep]) where
-  Prim :: Lensable rt fds => Lens '[table] rt DefaultPredicate (SplitFDs fds)
+  Prim :: Lensable rt fds fdsnew => Lens '[table] rt DefaultPredicate fdsnew
   Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =>
     Lens ts1 rt1 p1 fds1 ->
     Lens ts2 rt2 p2 fds2 ->
@@ -119,8 +123,8 @@ lensToFromRowHack (Select _ _) = Hack
 lensToFromRowHack (Drop _ _ _) = Hack
 lensToFromRowHack (Join _ _) = Hack
 
-prim :: forall table rt fds. Lensable rt fds => Lens '[table] rt DefaultPredicate (SplitFDs fds)
-prim = Prim @rt @fds @table
+prim :: forall table rt fds fdsnew. Lensable rt fds fdsnew => Lens '[table] rt DefaultPredicate fdsnew
+prim = Prim @rt @fds @fdsnew @table
 
 select :: forall p ts rt pred fds pnew. Selectable rt p pred fds pnew =>
   HPhrase p -> Lens ts rt pred fds -> Lens ts rt (Simplify (p :& pred)) fds

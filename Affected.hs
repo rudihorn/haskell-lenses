@@ -43,10 +43,10 @@ class Affected (fds :: [FunDep]) (rt :: Env) where
   affected :: RecordsSet rt -> DPhrase
 
 instance Affected '[] rt where
-  affected _ = P.Constant (DP.Bool True)
+  affected _ = P.Constant (DP.Bool False)
 
 instance (Recoverable (Left fd) [String], R.Project (Left fd) rt, Affected fds rt, ToDynamic (R.ProjectEnv (Left fd) rt)) =>
   Affected (fd ': fds) rt where
-  affected rt = DP.conjunction [
+  affected rt = DP.disjunction [
     P.In (recover @(Left fd) Proxy) (toDPList $ project @(Left fd) rt),
     affected @fds rt]

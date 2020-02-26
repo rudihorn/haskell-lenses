@@ -64,15 +64,15 @@ print_unary_op :: P.UnaryOperator -> String
 print_unary_op P.Negate = "NOT"
 print_unary_op P.UnaryMinus = "-"
 
-print_query_eq :: LensDatabase db => db -> ColumnsOpt -> DP.Phrase -> QP.Op -> QP.Op -> IO Builder
-print_query_eq db col p pr npr
-  | compare npr pr == LT = build "({})" <$> Only <$> print_query db col p npr
-  | otherwise = print_query db col p npr
+eq_priority :: QP.Op -> QP.Op -> Builder -> Builder
+eq_priority pr npr bld
+  | compare npr pr == LT = build "({})" $ Only $ bld
+  | otherwise = bld
 
-print_query_gr :: LensDatabase db => db -> ColumnsOpt -> DP.Phrase -> QP.Op -> QP.Op -> IO Builder
-print_query_gr db col p pr npr
-  | compare npr pr == GT = print_query db col p npr
-  | otherwise = build "({})" <$> Only <$> print_query db col p npr
+gr_priority :: QP.Op -> QP.Op -> Builder -> Builder
+gr_priority pr npr bld
+  | compare npr pr == GT = bld
+  | otherwise = build "({})" $ Only $ bld
 
 build_sep :: (Buildable sep, Buildable a) => sep -> [a] -> Builder
 build_sep _ [] = build "" ()
@@ -100,13 +100,13 @@ print_query db cols (P.Var v) _ = build "{}.{}" <$> (escIds $ fromJust $ Map.loo
   escIds (x,y) = (,) <$> escapeId db y <*> escapeId db x
 print_query db cols (P.InfixAppl op a b) pr =
   let npr = QP.of_op op in
-  do left <- print_query_eq db cols a pr npr
-     right <- print_query_eq db cols b pr npr
-     return $ build "{} {} {}" (left, print_op op, right)
+  do left <- print_query db cols a npr
+     right <- print_query db cols b npr
+     return $ eq_priority pr npr $ build "{} {} {}" (left, print_op op, right)
 print_query db cols (P.UnaryAppl op a) pr =
   let npr = QP.of_unary_op op in
-  do arg <- print_query_gr db cols a pr npr
-     return $ build "{} {}" (print_unary_op op, arg)
+  do arg <- print_query db cols a npr
+     return $ gr_priority pr npr $ build "{} {}" (print_unary_op op, arg)
 print_query db _ (P.In _ []) _ =
   return $ build "FALSE" ()
 print_query db cols (P.In cs vals) pr =

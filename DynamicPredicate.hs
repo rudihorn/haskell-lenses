@@ -69,9 +69,17 @@ simplify p = p
 
 conjunction :: [P.Phrase id Value] -> P.Phrase id Value
 conjunction (P.Constant (Bool True) : y : xs) = conjunction $ y : xs
+conjunction (y : P.Constant (Bool True) : xs) = conjunction $ y : xs
 conjunction (x : y : xs) = P.InfixAppl P.LogicalAnd x $ conjunction $ y : xs
 conjunction [x] = x
 conjunction [] = P.Constant (Bool True)
+
+disjunction :: [P.Phrase id Value] -> P.Phrase id Value
+disjunction (P.Constant (Bool False) : y : xs) = disjunction $ y : xs
+disjunction (x : P.Constant (Bool False) : xs) = disjunction $ x :xs
+disjunction (x : y : xs) = P.InfixAppl P.LogicalOr x $ disjunction $ y : xs
+disjunction [x] = x
+disjunction [] = P.Constant (Bool True)
 
 not :: P.Phrase id Value -> P.Phrase id Value
 not p = P.UnaryAppl P.Negate p

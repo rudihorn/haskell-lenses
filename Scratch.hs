@@ -42,15 +42,15 @@ testdb (l :: Lens t r p fds) = do
   -- mapM_ Prelude.print res
   return res
 
-testput :: (RecoverTables ts, RecoverEnv rt) =>
+testput :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
   Lens ts rt p fds -> RecordsSet rt -> IO ()
-testput l delta =
+testput l rs =
   do conn <- connect defaultConnectInfo {
          connectDatabase = "links",
          connectUser = "links",
          connectPassword = "links"
        }
-     put conn l (Delta.fromSet delta)
+     put conn l rs
 
 -- Bohanonn et al. PODS 2016 examples
 albums = prim @"albums" @'[ '("album", 'T.String), '("quantity", 'T.Int)]
@@ -76,8 +76,8 @@ exampleUnchanged = lrows tracks3
     (5, "Trust", 4, "Wish")]
 
 examplePut = rows @Tracks3
-    [ (3, "Lullaby", 4, "Show"),
-      (7, "Lovesong", 5, "Disintegration")]
+  [ (3, "Lullaby", 4, "Show"),
+    (7, "Lovesong", 5, "Disintegration")]
 
 -- my_hybrid_lenses :: Bool -> Int -> String -> IO [Row Output]
 my_hybrid_lenses b i s = do

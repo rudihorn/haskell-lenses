@@ -24,6 +24,7 @@ import LensQuery (build_insert, column_map, query_predicate)
 import RowType (Env, JoinColumns, Project, ProjectEnv, VarsEnv)
 import SortedRecords (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
 import Tables (RecoverTables, recover_tables)
+import Database.PostgreSQL.Simple.FromRow
 
 import qualified Delta
 import qualified DynamicPredicate as DP
@@ -39,20 +40,21 @@ import qualified Value
 --  DropPut :: (Droppable env key rt1 p1 fds1 rt pred fds, LensQuery c rt) => LensPutable c ts rt1 p1 fds1 -> Lens ts rt p fds -> LensPutable c ts rt p fds
 --  SelectPut :: (Selectable rt p LensQuery c rt) => LensPutable c ts1 rt1 p1 fds1 -> Lens ts rt p fds -> LensPutable c ts rt p fds
 
-put :: forall c ts rt p fds.
+put_delta :: forall c ts rt p fds.
   (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c) =>
   c -> (Lens ts rt p fds) -> RecordsDelta rt -> IO ()
 
-put c Prim delta_m =
+put_delta c Prim delta_m =
   do qinsert <- build_insert c tbl $ positive delta_m
      Prelude.print qinsert where
+  --mkMap set = map (\e -> project @(StartingPoints (Lefts fds) (Rights fds)))$ Set.fromList set
   tbl = head $ recover_tables @ts Proxy
 
-put c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p1 fds1)) delta_n =
-  do affected <- affectedIO
-     let res = (revise_fd @(key --> P.Vars env) (positive delta_m) affected,
-                revise_fd @(key --> P.Vars env) (negative delta_m) affected)
-     put c l res where
+put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p1 fds1)) delta_n =
+  do aff <- affectedIO
+     let res = (revise_fd @(key --> P.Vars env) (positive delta_m) aff,
+                revise_fd @(key --> P.Vars env) (negative delta_m) aff)
+     put_delta c l res where
   cols = column_map l
   affectedIO = Set.fromList <$>
        query_ex @c @(ProjectEnv (key :++ P.Vars env) rt1) Proxy c tbls cols pred where
@@ -63,7 +65,7 @@ put c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p1 fds1
     (join (positive delta_n) envRows,
      join (negative delta_n) envRows)
 
-put c (Select (HPred p) l) delta_n =
+put_delta c (Select (HPred p) l) delta_n =
   do unsat <- Set.fromList <$> query_ex @c @rt Proxy c tbls cols pred
      let delta_m0 =
            (Delta.fromSet $ merge @(TopologicalSort fds) unsat (positive delta_n))
@@ -71,7 +73,7 @@ put c (Select (HPred p) l) delta_n =
      let delta_nh =
            (SR.filter p $ positive delta_m0, SR.filter p $ negative delta_m0)
            #- delta_n
-     put c l (delta_m0 #- delta_nh) where
+     put_delta c l (delta_m0 #- delta_nh) where
   pred = DP.conjunction
     [affected @fds $ Delta.positive delta_n,
      query_predicate l,
@@ -79,7 +81,7 @@ put c (Select (HPred p) l) delta_n =
   cols = column_map l
   tbls = recover_tables @ts Proxy
 
-put c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) delta_o =
+put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) delta_o =
   do qd1 <- Set.fromList <$> query_ex @c @rt1 Proxy c ts1 (column_map l1) pred_m
      qd2 <- Set.fromList <$> query_ex @c @rt2 Proxy c ts2 (column_map l2) pred_n
      let delta_m0 = Delta.fromSet (merge @(TopologicalSort fds1) qd1 delta_ol) #- Delta.fromSet qd1
@@ -91,8 +93,8 @@ put c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) delta_o =
                     (join @rt (negative delta_m0) qN) `Set.union` (join @rt qM (negative delta_n')))
      let delta_m' = delta_m0 #- (project @(VarsEnv rt1) $ positive delta_l,
                                  project @(VarsEnv rt1) $ negative delta_l)
-     put c l1 delta_m'
-     put c l2 delta_n' where
+     put_delta c l1 delta_m'
+     put_delta c l2 delta_n' where
   delta_ol = project @(VarsEnv rt1) $ Delta.positive delta_o
   delta_or = project @(VarsEnv rt2) $ Delta.positive delta_o
   pred_m = DP.conjunction [affected @fds1 delta_ol, query_predicate l1]
@@ -106,3 +108,11 @@ put c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) delta_o =
       [P.In (recover @(JoinColumns rt1 rt2) Proxy)
          (toDPList $ project @(JoinColumns rt1 rt2) (delta_union delta)),
        query_predicate l]
+
+
+put :: forall c ts rt p fds.
+  (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c, FromRow (R.Row rt)) =>
+  c -> (Lens ts rt p fds) -> RecordsSet rt -> IO ()
+put c l rs =
+  do unchanged <- query c l
+     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged)

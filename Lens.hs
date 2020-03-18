@@ -16,7 +16,7 @@ import CompilePredicate (LookupMap)
 --import FunDep (DropColumn, FunDep, InTreeForm, SplitFDs, Outputs)
 import FunDep
 import HybridPredicate -- (HPhrase)
-import Label (NoDuplicates, IsDisjoint, SymAsSet)
+import Label (NoDuplicates, IsDisjoint, Subset, Subtract, SymAsSet)
 import Predicate ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
                   HasCols, LJDI, ReplacePredicate, Simplify,
                   SPhrase, TypesBool, Vars)
@@ -39,17 +39,31 @@ type IgnoresOutputs p fds = IsIgnoresOutputs p fds ~ 'True
 
 type DefaultPredicate = P.B 'True
 
-type Lensable rt fds fdsnew = (fdsnew ~ SplitFDs fds,
-                        NoDuplicates rt, FromRow (R.Row rt),
-                        ToDynamic rt, Recoverable (VarsEnv rt) [String],
-                        Project (TableKey fdsnew) rt,
-                        ToDynamic (ProjectEnv (TableKey fdsnew) rt),
-                        Recoverable (VarsEnv (ProjectEnv (TableKey fdsnew) rt)) [String])
+-- currently only works on tree form fundeps
+type family TableKey (rt :: Env) (fds :: [FunDep]) :: [Symbol] where
+  TableKey rt fds =
+    Roots fds :++
+    Subtract (VarsEnv rt) (TransClosure (Roots fds) fds)
+
+type family UpdateColumns (rt :: Env) (fds :: [FunDep]) :: [Symbol] where
+  UpdateColumns rt fds = Subtract (VarsEnv rt) (TableKey rt fds)
+
+type Lensable rt fds fdsnew =
+  (fdsnew ~ SplitFDs fds,
+   NoDuplicates rt, FromRow (R.Row rt),
+   ToDynamic rt, Recoverable (VarsEnv rt) [String],
+   Project (TableKey rt fdsnew) rt,
+   ToDynamic (ProjectEnv (TableKey rt fdsnew) rt),
+   Recoverable (VarsEnv (ProjectEnv (TableKey rt fdsnew) rt)) [String],
+   Project (UpdateColumns rt fdsnew) rt,
+   ToDynamic (ProjectEnv (UpdateColumns rt fdsnew) rt),
+   Recoverable (VarsEnv (ProjectEnv (UpdateColumns rt fdsnew) rt)) [String])
 
 type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =
   (rtnew ~ JoinRowTypes rt1 rt2,
    DisjointTables ts1 ts2, OverlappingJoin rt1 rt2,
    IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2,
+   Subset (VarsEnv rt2) (TransClosure (R.JoinColumns rt1 rt2) fds2),
    InTreeForm fds1, InTreeForm fds2, RecoverEnv rt1,
    RecoverEnv rt2, RecoverTables ts1, RecoverTables ts2,
    FromRow (R.Row rtnew),
@@ -74,7 +88,8 @@ type Selectable rt p pred fds pnew =
   (pnew ~ Simplify (p :& pred),
    TypesBool rt p, IgnoresOutputs pred fds, InTreeForm fds,
    Affected fds rt, LookupMap rt, Revisable (TopologicalSort fds) rt rt,
-   FromRow (R.Row rt))
+   FromRow (R.Row rt),
+   R.Fields rt)
 
 type Droppable env key rt pred fds rtnew prednew fdsnew =
   (rtnew ~ RemoveEnv (Vars env) rt,
@@ -90,8 +105,12 @@ type Droppable env key rt pred fds rtnew prednew fdsnew =
    FromRow (R.Row (ProjectEnv (key :++ P.Vars env) rt)),
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 
+type Debuggable rt =
+  (R.Fields rt)
+
 data Lens (tables :: Tables) (rt :: Env) (p :: SPhrase) (fds :: [FunDep]) where
   Prim :: Lensable rt fds fdsnew => Lens '[table] rt DefaultPredicate fdsnew
+  Debug :: Debuggable rt => Lens ts rt p fds -> Lens ts rt p fds
   Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =>
     Lens ts1 rt1 p1 fds1 ->
     Lens ts2 rt2 p2 fds2 ->
@@ -119,6 +138,7 @@ lrows (l :: Lens ts rt p fds) vars = rows @rt vars
 
 lensToFromRowHack :: Lens ts rt p fds -> FromRowHack rt
 lensToFromRowHack Prim = Hack
+lensToFromRowHack (Debug l) = lensToFromRowHack l
 lensToFromRowHack (Select _ _) = Hack
 lensToFromRowHack (Drop _ _ _) = Hack
 lensToFromRowHack (Join _ _) = Hack

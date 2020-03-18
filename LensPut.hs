@@ -17,10 +17,10 @@ import DynamicPredicate (DPhrase)
 import FunDep
 -- import FunDep (FunDep(..), Left, Right, TopologicalSort)
 import HybridPredicate (HPhrase(..))
-import Label (IsSubset, AdjustOrder)
-import Lens (Droppable, Lens(..))
+import Label (IsSubset, AdjustOrder, Subtract)
+import Lens (Droppable, Lens(..), TableKey)
 import LensDatabase (LensDatabase(..), LensQuery, Columns, query, query_ex)
-import LensQuery (build_delete, build_insert, column_map, query_predicate)
+import LensQuery (build_delete, build_insert, build_update, column_map, query_predicate)
 import RowType (Env, JoinColumns, Project, ProjectEnv, VarsEnv)
 import SortedRecords (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
 import Tables (RecoverTables, recover_tables)
@@ -47,15 +47,23 @@ put_delta :: forall c ts rt p fds.
 put_delta c (Prim :: Lens ts rt p fds) delta_m =
   do qinsert <- build_insert c tbl $ Map.elems mapIns
      qdelete <- mapM (build_delete c tbl) $ Map.keys mapDel
+     qupdate <- mapM (\(k,e) ->
+       build_update c tbl k (R.project @(Subtract (VarsEnv rt) (TableKey rt fds)) e))
+       $ Map.assocs mapUpd
+     v <- mapM Prelude.print qupdate
      v <- mapM Prelude.print qdelete
      Prelude.print qinsert where
-  mkMap set = Map.fromList $ map (\e -> (R.project @(TableKey fds) @rt e, e)) $ Set.toList set
+  mkMap set = Map.fromList $ map (\e -> (R.project @(TableKey rt fds) @rt e, e)) $ Set.toList set
   mapPos = mkMap $ positive delta_m
   mapNeg = mkMap $ negative delta_m
   mapIns = mapPos Map.\\ mapNeg
   mapDel = mapNeg Map.\\ mapPos
   mapUpd = mapPos `Map.intersection` mapNeg
   tbl = head $ recover_tables @ts Proxy
+
+put_delta c (Debug l) delta_m =
+  do Prelude.print $ show delta_m
+     put_delta c l delta_m
 
 put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p1 fds1)) delta_n =
   do aff <- affectedIO
@@ -75,8 +83,8 @@ put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p
 put_delta c (Select (HPred p) l) delta_n =
   do unsat <- Set.fromList <$> query_ex @c @rt Proxy c tbls cols pred
      let delta_m0 =
-           (Delta.fromSet $ merge @(TopologicalSort fds) unsat (positive delta_n))
-           #- Delta.fromSet unsat
+           ((Delta.fromSet $ merge @(TopologicalSort fds) unsat (positive delta_n))
+           #- Delta.fromSet unsat) #- (Delta.fromSet $ negative delta_n)
      let delta_nh =
            (SR.filter p $ positive delta_m0, SR.filter p $ negative delta_m0)
            #- delta_n
@@ -98,6 +106,7 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
      let delta_l = (join @rt (positive $ Delta.fromSet qM #+ delta_m0) (positive delta_n') `Set.union`
                     join @rt (positive delta_m0) (positive $ Delta.fromSet qN #+ delta_n'),
                     (join @rt (negative delta_m0) qN) `Set.union` (join @rt qM (negative delta_n')))
+                    #- delta_o
      let delta_m' = delta_m0 #- (project @(VarsEnv rt1) $ positive delta_l,
                                  project @(VarsEnv rt1) $ negative delta_l)
      put_delta c l1 delta_m'

@@ -150,6 +150,5 @@ type family TopologicalSortEx (res :: ([[Symbol]], [FunDep], [FunDep])) :: [FunD
 type family TopologicalSort (fds :: [FunDep]) :: [FunDep] where
   TopologicalSort fds = TopologicalSortEx '(StartingPoints (Lefts fds) (Rights fds), '[], fds)
 
--- currently only works on tree form fundeps
-type family TableKey (fds :: [FunDep]) :: [Symbol] where
-  TableKey fds = Concat (StartingPoints (Lefts fds) (Rights fds))
+type family Roots (fds :: [FunDep]) :: [Symbol] where
+  Roots fds = Concat (StartingPoints (Lefts fds) (Rights fds))

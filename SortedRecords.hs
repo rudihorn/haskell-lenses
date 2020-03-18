@@ -89,7 +89,7 @@ instance Revisable '[] rt rt' where
   revise r s = r
 
 instance (RevisableFd fd rt rt', Revisable fds rt rt') => Revisable (fd ': fds) rt rt' where
-  revise r s = revise_fd @fd r s
+  revise r s = revise_fd @fd (revise  @fds r s) s
 
 merge :: forall fds rt. Revisable fds rt rt => RecordsSet rt -> RecordsSet rt -> RecordsSet rt
 merge r s = revise @fds r s `Set.union` s

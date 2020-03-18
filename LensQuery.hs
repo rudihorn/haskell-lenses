@@ -38,6 +38,7 @@ instance (RecoverTables t, RecoverEnv r) => ColumnMap (Lens t r p fds) where
     env = recover_env (Proxy :: Proxy r)
     f (col, typ) = (col, ([table_name], typ))
     table_name = head $ recover_tables (Proxy :: Proxy t)
+  column_map (Debug l) = column_map l
   column_map (Select _ l) = column_map l
   column_map (Drop Proxy Proxy l) = column_map l
   column_map (Join l1 l2) = Map.unionWith f (column_map l1) (column_map l2) where
@@ -48,6 +49,7 @@ class QueryPredicate a where
 
 instance QueryPredicate (Lens t r p fds) where
   query_predicate Prim = P.Constant (DP.Bool True)
+  query_predicate (Debug l) = query_predicate l
   query_predicate (Drop Proxy Proxy l) = query_predicate l
   query_predicate (Select (HPred pr) l) = DP.simplify $ P.InfixAppl (P.LogicalAnd) pr (query_predicate l)
   query_predicate (Join l1 l2) = DP.simplify $ P.InfixAppl (P.LogicalAnd) (query_predicate l1) (query_predicate l2)
@@ -88,16 +90,20 @@ print_value db (DP.Bool True) = return $ build "TRUE" ()
 print_value db (DP.Int i) = return $ build "{}" (Only i)
 print_value db (DP.String s) = escapeStr db s
 
-print_col :: LensDatabase db => db -> String -> ([String], Types.Type) -> IO Builder
-print_col db v (table,_) =
-  do tbl <- escapeId db $ head table
-     col <- escapeId db v
-     return $ build "{}.{}" (tbl, col)
+print_col :: LensDatabase db => db -> String -> String -> IO Builder
+print_col db tbl col =
+  do etbl <- escapeId db tbl
+     ecol <- escapeId db col
+     return $ if tbl == "" then ecol else build "{}.{}" (etbl, ecol)
+
+print_col_t :: LensDatabase db => db -> String -> ([String], Types.Type) -> IO Builder
+print_col_t db v (table,_) =
+  print_col db (head table) v
 
 print_query :: LensDatabase db => db -> ColumnsOpt -> DP.Phrase -> QP.Op -> IO Builder
 print_query db _ (P.Constant val) _ = print_value db val
-print_query db cols (P.Var v) _ = build "{}.{}" <$> (escIds $ fromJust $ Map.lookup v cols) where
-  escIds (x,y) = (,) <$> escapeId db y <*> escapeId db x
+print_query db cols (P.Var v) _ = print_col db tbl col where
+  (col, tbl) = fromJust $ Map.lookup v cols
 print_query db cols (P.InfixAppl op a b) pr =
   let npr = QP.of_op op in
   do left <- print_query db cols a npr
@@ -156,7 +162,7 @@ build_query_ex db tbls cols cols_map p =
   build_group (x : y : xs) = P.InfixAppl P.Equal (P.Var x) (P.Var y) : build_group (y : xs)
   build_group _ = []
   build_groups = DP.conjunction $ map DP.conjunction $ map build_group grps
-  cols_bld = build_sep_str ", " <$> (mapM (\k -> print_col db k $ fromJust $ Map.lookup k cols_map) $ cols)
+  cols_bld = build_sep_str ", " <$> (mapM (\k -> print_col_t db k $ fromJust $ Map.lookup k cols_map) $ cols)
   pred_bld = print_query db cols' (DP.conjunction [build_groups, p]) QP.first
   tbls_bld = build_sep_str ", " <$> (mapM (\x -> build "{}" <$> Only <$> (escapeId db x)) tbls)
 
@@ -190,7 +196,7 @@ build_delete_ex db tbl match =
   do etbl <- escapeId db tbl
      wher <- print_query db colsOpt pred QP.first
      return $ build "DELETE FROM {} WHERE {}" (etbl, wher) where
-  colsOpt = Map.fromList $ map (\(k,_) -> (k,("",k))) match
+  colsOpt = Map.fromList $ map (\(k,_) -> (k,(k,""))) match
   pred = DP.conjunction $ map (\(k,v) -> P.InfixAppl P.Equal (P.Var k) (P.Constant v)) match
 
 build_delete :: forall db rt. (ToDynamic rt, Recoverable (VarsEnv rt) [String], LensDatabase db) =>
@@ -199,3 +205,31 @@ build_delete db tbl match = build_delete_ex db tbl matchex where
   cols = recover @(VarsEnv rt) Proxy
   vals = toDynamic match
   matchex = zip cols vals
+
+build_update_ex :: forall db. LensDatabase db =>
+  db -> String -> [(String, DP.Value)] -> [(String, DP.Value)] -> IO Builder
+build_update_ex db tbl match update =
+  do etbl <- escapeId db tbl
+     eset <- build_sep_str ", " <$> mapM fset update
+     ewher <- print_query db colsOpt pred QP.first
+     return $ build "UPDATE {} SET {} WHERE {}" (etbl, eset, ewher) where
+  colsOpt = Map.fromList $ map (\(k,_) -> (k,(k,""))) match
+  pred = DP.conjunction $ map (\(k,v) -> P.InfixAppl P.Equal (P.Var k) (P.Constant v)) match
+  fset (k,v) =
+    do ek <- print_col db "" k
+       ev <- print_value db v
+       return $ build "{} = {}" (ek, ev)
+
+build_update :: forall db rtm rtu.
+  (Recoverable (VarsEnv rtm) [String], ToDynamic rtm,
+   Recoverable (VarsEnv rtu) [String], ToDynamic rtu,
+   LensDatabase db) =>
+  db -> String -> Row rtm -> Row rtu -> IO Builder
+build_update db tbl match update =
+    build_update_ex db tbl matchex updex where
+  colsm = recover @(VarsEnv rtm) Proxy
+  colsu = recover @(VarsEnv rtu) Proxy
+  dmatch = toDynamic match
+  dupd = toDynamic update
+  matchex = zip colsm dmatch
+  updex = zip colsu dupd

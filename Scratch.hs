@@ -56,28 +56,28 @@ testput l rs =
 albums = prim @"albums" @'[ '("album", 'T.String), '("quantity", 'T.Int)]
   @'[ '["album"] --> '["quantity"]]
 
-tracks = prim @"tracks" @'[ '("track", 'T.String), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
+tracks = Debug $ prim @"tracks" @'[ '("track", 'T.String), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
   @'[ '["track"] --> '["date", "rating"]]
 
-tracks1 = join albums tracks
+tracks1 = join tracks albums
 
 tracks2 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks1
 
 tracks3 = select (var @"quantity" !> di 2) tracks2
 
 type Output = '[ '("quantity", 'T.Int), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
-type Tracks3 = '[ '("quantity", 'T.Int), '("track", 'T.String), '("rating", 'T.Int), '("album", 'T.String)]
+type Tracks3 = '[ '("track", 'T.String), '("rating", 'T.Int), '("album", 'T.String), '("quantity", 'T.Int)]
 
 type PredRow = '[ '("quantity", 'T.Int), '("album", 'T.String)]
 
-exampleUnchanged = lrows tracks3
-  [ (4, "Lovesong", 5, "Paris"),
-    (3, "Lullaby", 3, "Show"),
-    (5, "Trust", 4, "Wish")]
+-- exampleUnchanged = lrows tracks3
+--   [ (4, "Lovesong", 5, "Paris"),
+--     (3, "Lullaby", 3, "Show"),
+--     (5, "Trust", 4, "Wish")]
 
 examplePut = rows @Tracks3
-  [ (3, "Lullaby", 4, "Show"),
-    (7, "Lovesong", 5, "Disintegration")]
+  [ ("Lullaby", 4, "Show", 3),
+    ("Lovesong", 5, "Disintegration", 7)]
 
 -- my_hybrid_lenses :: Bool -> Int -> String -> IO [Row Output]
 my_hybrid_lenses b i s = do
@@ -85,7 +85,7 @@ my_hybrid_lenses b i s = do
   pred = if b
          then (dynamic @PredRow @'T.Bool (var @"quantity" !> di i))
          else (dynamic @PredRow @'T.Bool (var @"album" != ds s))
-  tracks1 = Lens.join albums tracks
+  tracks1 = Lens.join tracks albums
   tracks2 = select pred tracks1
   tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2
 

@@ -62,6 +62,8 @@ type family IsSubset (l :: [Symbol]) (r :: [Symbol]) :: Bool where
   IsSubset '[] _ = 'True
   IsSubset (x ': xs) ys = IsElement x ys && IsSubset xs ys
 
+type Subset l r = IsSubset l r ~ 'True
+
 type family IsDisjoint (l :: [Symbol]) (r :: [Symbol]) :: Bool where
   IsDisjoint '[] _ = 'True
   IsDisjoint (x ': xs) ys = Not (IsElement x ys) && IsDisjoint xs ys

@@ -52,7 +52,8 @@ instance LensQuery PostgresDatabase where
     let cols = Prelude.map fst $ recover_env @rt Proxy
     q <- build_query_ex c tables cols cols_map p
     let qstr = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q
-    Prelude.print qstr
+    -- Prelude.print qstr
     query_ c (Query { fromQuery = qstr })
-  execute c q = do _ <- execute_ c (Query {fromQuery = q})
+  execute c q = do let qstr = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q
+                   _ <- execute_ c (Query {fromQuery = qstr})
                    return ()

@@ -43,20 +43,29 @@ testdb (l :: Lens t r p fds) = do
   return res
 
 testput :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
-  Lens ts rt p fds -> RecordsSet rt -> IO ()
-testput l rs =
+  Lens ts rt p fds -> RecordsSet rt -> Bool -> IO ()
+testput l rs wif =
   do conn <- connect defaultConnectInfo {
          connectDatabase = "links",
          connectUser = "links",
          connectPassword = "links"
        }
-     put conn l rs
+     put conn l rs wif
 
 -- Bohanonn et al. PODS 2016 examples
-albums = prim @"albums" @'[ '("album", 'T.String), '("quantity", 'T.Int)]
+
+type Albums = '[ '("album", 'T.String), '("quantity", 'T.Int)]
+
+albums = prim @"albums" @Albums
   @'[ '["album"] --> '["quantity"]]
 
-tracks = Debug $ prim @"tracks" @'[ '("track", 'T.String), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
+type Tracks = '[
+  '("track", 'T.String),
+  '("date", 'T.Int),
+  '("rating", 'T.Int),
+  '("album", 'T.String)]
+
+tracks = prim @"tracks" @Tracks
   @'[ '["track"] --> '["date", "rating"]]
 
 tracks1 = join tracks albums
@@ -74,6 +83,21 @@ type PredRow = '[ '("quantity", 'T.Int), '("album", 'T.String)]
 --   [ (4, "Lovesong", 5, "Paris"),
 --     (3, "Lullaby", 3, "Show"),
 --     (5, "Trust", 4, "Wish")]
+
+unchangedAlbums = rows @Albums
+  [ ("Show", 3),
+    ("Galore", 1),
+    ("Paris", 4),
+    ("Wish", 5),
+    ("Eponymous", 42),
+    ("Disintegration", 6)]
+
+unchangedTracks = rows @Tracks
+  [ ("Lovesong", 1989, 5, "Galore"),
+    ("Lovesong", 1989, 5, "Paris"),
+    ("Lullaby", 1989, 3, "Galore"),
+    ("Lullaby", 1989, 3, "Show"),
+    ("Trust", 1992, 4, "Wish") ]
 
 examplePut = rows @Tracks3
   [ ("Lullaby", 4, "Show", 3),

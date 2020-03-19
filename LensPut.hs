@@ -7,6 +7,7 @@ module LensPut where
 import Data.Type.Set (Proxy(..), (:++))
 import Data.ByteString.Builder(toLazyByteString)
 
+import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
@@ -45,14 +46,18 @@ put_delta :: forall c ts rt p fds.
   c -> (Lens ts rt p fds) -> RecordsDelta rt -> Bool -> IO ()
 
 put_delta c (Prim :: Lens ts rt p fds) delta_m what_if =
-  do qinsert <- build_insert c tbl $ Map.elems mapIns
-     qdelete <- mapM (build_delete c tbl) $ Map.keys mapDel
+  do qdelete <- mapM (build_delete c tbl) $ Map.keys mapDel
      qupdate <- mapM (\(k,e) ->
        build_update c tbl k (R.project @(Subtract (VarsEnv rt) (TableKey rt fds)) e))
        $ Map.assocs mapUpd
      v <- mapM action qupdate
      v <- mapM action qdelete
-     action qinsert where
+     if List.null insElems
+       then return ()
+       else
+         do qinsert <- build_insert c tbl $ insElems
+            action qinsert where
+  insElems = Map.elems mapIns
   mkMap set = Map.fromList $ map (\e -> (R.project @(TableKey rt fds) @rt e, e)) $ Set.toList set
   mapPos = mkMap $ positive delta_m
   mapNeg = mkMap $ negative delta_m

@@ -7,7 +7,7 @@ module LensQueryPostgres (PostgresDatabase, query) where
 import Data.Type.Set (Proxy(..))
 
 import Database.PostgreSQL.Simple(
-  Connection, query_, connect, defaultConnectInfo,
+  Connection, query_, execute_, connect, defaultConnectInfo,
   connectDatabase, connectUser, connectPassword)
 import Database.PostgreSQL.Simple.Types(Query(..), fromQuery)
 import Database.PostgreSQL.Simple.Internal(
@@ -54,3 +54,5 @@ instance LensQuery PostgresDatabase where
     let qstr = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q
     Prelude.print qstr
     query_ c (Query { fromQuery = qstr })
+  execute c q = do _ <- execute_ c (Query {fromQuery = q})
+                   return ()

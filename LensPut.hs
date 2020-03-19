@@ -19,7 +19,7 @@ import FunDep
 import HybridPredicate (HPhrase(..))
 import Label (IsSubset, AdjustOrder, Subtract)
 import Lens (Droppable, Lens(..), TableKey)
-import LensDatabase (LensDatabase(..), LensQuery, Columns, query, query_ex)
+import LensDatabase (LensDatabase(..), LensQuery, Columns, query, query_ex, execute)
 import LensQuery (build_delete, build_insert, build_update, column_map, query_predicate)
 import RowType (Env, JoinColumns, Project, ProjectEnv, VarsEnv)
 import SortedRecords (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
@@ -42,17 +42,17 @@ import qualified Value
 
 put_delta :: forall c ts rt p fds.
   (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c) =>
-  c -> (Lens ts rt p fds) -> RecordsDelta rt -> IO ()
+  c -> (Lens ts rt p fds) -> RecordsDelta rt -> Bool -> IO ()
 
-put_delta c (Prim :: Lens ts rt p fds) delta_m =
+put_delta c (Prim :: Lens ts rt p fds) delta_m what_if =
   do qinsert <- build_insert c tbl $ Map.elems mapIns
      qdelete <- mapM (build_delete c tbl) $ Map.keys mapDel
      qupdate <- mapM (\(k,e) ->
        build_update c tbl k (R.project @(Subtract (VarsEnv rt) (TableKey rt fds)) e))
        $ Map.assocs mapUpd
-     v <- mapM Prelude.print qupdate
-     v <- mapM Prelude.print qdelete
-     Prelude.print qinsert where
+     v <- mapM action qupdate
+     v <- mapM action qdelete
+     action qinsert where
   mkMap set = Map.fromList $ map (\e -> (R.project @(TableKey rt fds) @rt e, e)) $ Set.toList set
   mapPos = mkMap $ positive delta_m
   mapNeg = mkMap $ negative delta_m
@@ -60,16 +60,17 @@ put_delta c (Prim :: Lens ts rt p fds) delta_m =
   mapDel = mapNeg Map.\\ mapPos
   mapUpd = mapPos `Map.intersection` mapNeg
   tbl = head $ recover_tables @ts Proxy
+  action = if what_if then Prelude.print else execute c
 
-put_delta c (Debug l) delta_m =
+put_delta c (Debug l) delta_m wif =
   do Prelude.print $ show delta_m
-     put_delta c l delta_m
+     put_delta c l delta_m wif
 
-put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p1 fds1)) delta_n =
+put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p1 fds1)) delta_n wif =
   do aff <- affectedIO
      let res = (revise_fd @(key --> P.Vars env) (positive delta_m) aff,
                 revise_fd @(key --> P.Vars env) (negative delta_m) aff)
-     put_delta c l res where
+     put_delta c l res wif where
   cols = column_map l
   affectedIO = Set.fromList <$>
        query_ex @c @(ProjectEnv (key :++ P.Vars env) rt1) Proxy c tbls cols pred where
@@ -80,7 +81,7 @@ put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens ts1 rt1 p
     (join (positive delta_n) envRows,
      join (negative delta_n) envRows)
 
-put_delta c (Select (HPred p) l) delta_n =
+put_delta c (Select (HPred p) l) delta_n wif =
   do unsat <- Set.fromList <$> query_ex @c @rt Proxy c tbls cols pred
      let delta_m0 =
            ((Delta.fromSet $ merge @(TopologicalSort fds) unsat (positive delta_n))
@@ -88,7 +89,7 @@ put_delta c (Select (HPred p) l) delta_n =
      let delta_nh =
            (SR.filter p $ positive delta_m0, SR.filter p $ negative delta_m0)
            #- delta_n
-     put_delta c l (delta_m0 #- delta_nh) where
+     put_delta c l (delta_m0 #- delta_nh) wif where
   pred = DP.conjunction
     [affected @fds $ Delta.positive delta_n,
      query_predicate l,
@@ -96,7 +97,7 @@ put_delta c (Select (HPred p) l) delta_n =
   cols = column_map l
   tbls = recover_tables @ts Proxy
 
-put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) delta_o =
+put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) delta_o wif =
   do qd1 <- Set.fromList <$> query_ex @c @rt1 Proxy c ts1 (column_map l1) pred_m
      qd2 <- Set.fromList <$> query_ex @c @rt2 Proxy c ts2 (column_map l2) pred_n
      let delta_m0 = Delta.fromSet (merge @(TopologicalSort fds1) qd1 delta_ol) #- Delta.fromSet qd1
@@ -109,8 +110,8 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
                     #- delta_o
      let delta_m' = delta_m0 #- (project @(VarsEnv rt1) $ positive delta_l,
                                  project @(VarsEnv rt1) $ negative delta_l)
-     put_delta c l1 delta_m'
-     put_delta c l2 delta_n' where
+     put_delta c l1 delta_m' wif
+     put_delta c l2 delta_n' wif where
   delta_ol = project @(VarsEnv rt1) $ Delta.positive delta_o
   delta_or = project @(VarsEnv rt2) $ Delta.positive delta_o
   pred_m = DP.conjunction [affected @fds1 delta_ol, query_predicate l1]
@@ -128,7 +129,7 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
 
 put :: forall c ts rt p fds.
   (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c, FromRow (R.Row rt)) =>
-  c -> (Lens ts rt p fds) -> RecordsSet rt -> IO ()
-put c l rs =
+  c -> (Lens ts rt p fds) -> RecordsSet rt -> Bool -> IO ()
+put c l rs wif =
   do unchanged <- query c l
-     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged)
+     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) wif

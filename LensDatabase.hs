@@ -29,6 +29,7 @@ class LensQuery c where
   query :: forall t rt p fds. (LensQueryable t rt p, FromRow (Row rt)) =>
     c -> Lens t rt p fds -> IO [Row rt]
   query_ex :: (FromRow (Row rt), RecoverEnv rt) => Proxy rt -> c -> Tables -> Columns -> DP.Phrase -> IO [Row rt]
+  execute :: c -> String -> IO ()
 
 query_ex' :: forall c rt. (RecoverEnv rt, LensQuery c, FromRow (Row rt)) =>
   c -> Tables -> Columns -> DP.Phrase -> IO [Row rt]

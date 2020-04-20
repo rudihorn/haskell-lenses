@@ -48,10 +48,22 @@ type family TableKey (rt :: Env) (fds :: [FunDep]) :: [Symbol] where
 type family UpdateColumns (rt :: Env) (fds :: [FunDep]) :: [Symbol] where
   UpdateColumns rt fds = Subtract (VarsEnv rt) (TableKey rt fds)
 
-type Lensable rt fds fdsnew =
+type LensCommon ts rt p fds =
+  (Affected fds rt,
+   Revisable (TopologicalSort fds) rt rt,
+   RecoverTables ts,
+   RecoverEnv rt,
+   Recoverable (VarsEnv rt) [String],
+   LookupMap rt,
+   FromRow (R.Row rt),
+   ToDynamic rt,
+   NoDuplicates rt
+   )
+
+type Lensable ts rt p fds fdsnew =
   (fdsnew ~ SplitFDs fds,
-   NoDuplicates rt, FromRow (R.Row rt),
-   ToDynamic rt, Recoverable (VarsEnv rt) [String],
+   p ~ DefaultPredicate,
+   LensCommon ts rt p fdsnew,
    Project (TableKey rt fdsnew) rt,
    ToDynamic (ProjectEnv (TableKey rt fdsnew) rt),
    Recoverable (VarsEnv (ProjectEnv (TableKey rt fdsnew) rt)) [String],
@@ -61,28 +73,23 @@ type Lensable rt fds fdsnew =
 
 type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =
   (rtnew ~ JoinRowTypes rt1 rt2,
+   LensCommon ts1 rt1 p1 fds1,
+   LensCommon ts2 rt2 p2 fds2,
    DisjointTables ts1 ts2, OverlappingJoin rt1 rt2,
    IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2,
    Subset (VarsEnv rt2) (TransClosure (R.JoinColumns rt1 rt2) fds2),
-   InTreeForm fds1, InTreeForm fds2, RecoverEnv rt1,
-   RecoverEnv rt2, RecoverTables ts1, RecoverTables ts2,
+   InTreeForm fds1, InTreeForm fds2,
    FromRow (R.Row rtnew),
    ProjectEnv (VarsEnv rt1) rtnew ~ rt1,
    ProjectEnv (VarsEnv rt2) rtnew ~ rt2,
-   Revisable (TopologicalSort fds1) rt1 rt1,
-   Revisable (TopologicalSort fds2) rt2 rt2,
    Project (VarsEnv rt1) rtnew,
    Project (VarsEnv rt2) rtnew,
-   Affected fds1 rt1,
-   Affected fds2 rt2,
    Recoverable (R.JoinColumns rt1 rt2) [String],
    Project (R.JoinColumns rt1 rt2) rt1,
    Project (R.JoinColumns rt1 rt2) rt2,
    ToDynamic (ProjectEnv (R.JoinColumns rt1 rt2) rt1),
    ToDynamic (ProjectEnv (R.JoinColumns rt1 rt2) rt2),
-   RT.Joinable rt1 rt2 rtnew,
-   FromRow (R.Row rt1),
-   FromRow (R.Row rt2))
+   RT.Joinable rt1 rt2 rtnew)
 
 type Selectable rt p pred fds pnew =
   (pnew ~ Simplify (p :& pred),
@@ -109,7 +116,7 @@ type Debuggable rt =
   (R.Fields rt)
 
 data Lens (tables :: Tables) (rt :: Env) (p :: SPhrase) (fds :: [FunDep]) where
-  Prim :: Lensable rt fds fdsnew => Lens '[table] rt DefaultPredicate fdsnew
+  Prim :: Lensable '[table] rt p fds fdsnew => Lens '[table] rt p fdsnew
   Debug :: Debuggable rt => Lens ts rt p fds -> Lens ts rt p fds
   Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =>
     Lens ts1 rt1 p1 fds1 ->
@@ -143,8 +150,8 @@ lensToFromRowHack (Select _ _) = Hack
 lensToFromRowHack (Drop _ _ _) = Hack
 lensToFromRowHack (Join _ _) = Hack
 
-prim :: forall table rt fds fdsnew. Lensable rt fds fdsnew => Lens '[table] rt DefaultPredicate fdsnew
-prim = Prim @rt @fds @fdsnew @table
+prim :: forall table rt fds p fdsnew. Lensable '[table] rt p fds fdsnew => Lens '[table] rt p fdsnew
+prim = Prim @table @rt @p @fds @fdsnew
 
 select :: forall p ts rt pred fds pnew. Selectable rt p pred fds pnew =>
   HPhrase p -> Lens ts rt pred fds -> Lens ts rt (Simplify (p :& pred)) fds

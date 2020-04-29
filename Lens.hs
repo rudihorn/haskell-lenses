@@ -71,8 +71,9 @@ type Lensable ts rt p fds fdsnew =
    ToDynamic (ProjectEnv (UpdateColumns rt fdsnew) rt),
    Recoverable (VarsEnv (ProjectEnv (UpdateColumns rt fdsnew) rt)) [String])
 
-type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =
+type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
   (rtnew ~ JoinRowTypes rt1 rt2,
+   joincols ~ R.JoinColumns rt1 rt2,
    LensCommon ts1 rt1 p1 fds1,
    LensCommon ts2 rt2 p2 fds2,
    DisjointTables ts1 ts2, OverlappingJoin rt1 rt2,
@@ -84,11 +85,11 @@ type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =
    ProjectEnv (VarsEnv rt2) rtnew ~ rt2,
    Project (VarsEnv rt1) rtnew,
    Project (VarsEnv rt2) rtnew,
-   Recoverable (R.JoinColumns rt1 rt2) [String],
-   Project (R.JoinColumns rt1 rt2) rt1,
-   Project (R.JoinColumns rt1 rt2) rt2,
-   ToDynamic (ProjectEnv (R.JoinColumns rt1 rt2) rt1),
-   ToDynamic (ProjectEnv (R.JoinColumns rt1 rt2) rt2),
+   Recoverable joincols [String],
+   Project joincols rt1,
+   Project joincols rt2,
+   ToDynamic (ProjectEnv joincols rt1),
+   ToDynamic (ProjectEnv joincols rt2),
    RT.Joinable rt1 rt2 rtnew)
 
 type Selectable rt p pred fds pnew =
@@ -118,7 +119,7 @@ type Debuggable rt =
 data Lens (tables :: Tables) (rt :: Env) (p :: SPhrase) (fds :: [FunDep]) where
   Prim :: Lensable '[table] rt p fds fdsnew => Lens '[table] rt p fdsnew
   Debug :: Debuggable rt => Lens ts rt p fds -> Lens ts rt p fds
-  Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =>
+  Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =>
     Lens ts1 rt1 p1 fds1 ->
     Lens ts2 rt2 p2 fds2 ->
     Lens (ts1 :++ ts2) rtnew (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
@@ -161,7 +162,7 @@ dropl :: forall env (key :: [Symbol]) rt pred ts fds rtnew prednew fdsnew. (Drop
   Lens ts rt pred fds -> Lens ts rtnew prednew fdsnew
 dropl l = Drop @env @key @rt @pred @fds @rtnew @prednew @fdsnew @ts Proxy Proxy l
 
-join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew =>
+join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =>
     Lens ts1 rt1 p1 fds1 ->
     Lens ts2 rt2 p2 fds2 ->
     Lens (ts1 :++ ts2) rtnew (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))

@@ -102,13 +102,17 @@ instance FetchRow t 'Take (Row ('(s, t) ': env)) where
 instance (FetchRow t evid (Row env)) => FetchRow t ('Skip evid) (Row ('(so, to) ': env))  where
   intfetch (Cons _ row) = intfetch @t @evid row
 
-type Fetchable s env = FetchRow (LookupType env s) (Find env s) (Row env)
+type Fetchable s env t evid = (
+  t ~ LookupType env s,
+  evid ~ Find env s,
+  FetchRow t evid (Row env))
 
-fetchv :: forall s env. Fetchable s env => (Row env) -> Value.Value (LookupType env s)
+fetchv :: forall s env t evid. Fetchable s env t evid => (Row env) -> Value.Value t
 fetchv row = intfetch @(LookupType env s) @(Find env s) row
 
-fetch :: forall s env. Fetchable s env => (Row env) -> Types.HaskellType (LookupType env s)
-fetch row = Value.valof (intfetch @(LookupType env s) @(Find env s) row)
+fetch :: forall s env t evid. Fetchable s env t evid =>
+  (Row env) -> Types.HaskellType t
+fetch row = Value.valof (intfetch @t @evid row)
 
 
 
@@ -180,7 +184,7 @@ class Project (s :: [Symbol]) (e :: Env) where
 instance Project '[] env where
   project _ = RowType.Empty
 
-instance (Project xs env, Fetchable x env) => Project (x ': xs) (env) where
+instance (Project xs env, Fetchable x env t evid) => Project (x ': xs) (env) where
   project r = Cons (fetchv @x r) (project @xs @env r)
 
 type Normalisable (e :: Env) = Project (SymAsSet (VarsEnv e)) e

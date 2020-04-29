@@ -68,7 +68,7 @@ data Phrase id v where
   UnaryAppl :: UnaryOperator -> Phrase id v -> Phrase id v
   In :: [id] -> [[v]] -> Phrase id v
   Case :: Maybe (Phrase id v) -> [(Phrase id v, Phrase id v)] -> Phrase id v -> Phrase id v
-  Dynamic :: RT.Env -> T.Type -> Phrase id v
+  Dynamic :: RT.Env -> * -> Phrase id v
 
 type SPhrase = Phrase Symbol Value
 
@@ -132,70 +132,70 @@ type family FTV (phrase :: SPhrase) :: [Symbol] where
   FTV ('Dynamic rt _) = VarsEnv rt
 
 
-type family TypVal (c :: Value) :: T.Type where
-  TypVal ('Bool _) = 'T.Bool
-  TypVal ('Int _) = 'T.Int
-  TypVal ('String _) = 'T.String
+type family TypVal (c :: Value) :: * where
+  TypVal ('Bool _) = Bool
+  TypVal ('Int _) = Int
+  TypVal ('String _) = String
 
-type family LookupVar (env :: Env) (v :: Symbol) :: Maybe T.Type where
+type family LookupVar (env :: Env) (v :: Symbol) :: Maybe * where
   LookupVar '[] _ = 'Nothing
-  LookupVar ('(key,val) ': xs) key = 'Just val
+  LookupVar ('(key, t) ': xs) key = 'Just t
   LookupVar (_ ': xs) key = LookupVar xs key
 
-type family TypUnary (op :: UnaryOperator) (pt :: Maybe T.Type) :: Maybe T.Type where
-  TypUnary 'Negate ('Just 'T.Bool) = 'Just 'T.Bool
-  TypUnary 'UnaryMinus ('Just 'T.Int) = 'Just 'T.Int
+type family TypUnary (op :: UnaryOperator) (pt :: Maybe *) :: Maybe * where
+  TypUnary 'Negate ('Just Bool) = 'Just Bool
+  TypUnary 'UnaryMinus ('Just Int) = 'Just Int
   TypUnary _ _ = 'Nothing
 
-type family TypCmp (pt1 :: Maybe T.Type) (pt2 :: Maybe T.Type) :: Maybe T.Type where
+type family TypCmp (pt1 :: Maybe *) (pt2 :: Maybe *) :: Maybe * where
   TypCmp 'Nothing 'Nothing = 'Nothing
-  TypCmp a a = 'Just 'T.Bool
+  TypCmp a a = 'Just Bool
   TypCmp _ _ = 'Nothing
 
-type family TypInfix (op :: Operator) (pt1 :: Maybe T.Type) (pt2 :: Maybe T.Type) :: Maybe T.Type where
-  TypInfix 'Plus ('Just 'T.Int) ('Just 'T.Int) = 'Just 'T.Int
-  TypInfix 'LogicalAnd ('Just 'T.Bool) ('Just 'T.Bool) = 'Just 'T.Bool
-  TypInfix 'LogicalOr ('Just 'T.Bool) ('Just 'T.Bool) = 'Just 'T.Bool
+type family TypInfix (op :: Operator) (pt1 :: Maybe *) (pt2 :: Maybe *) :: Maybe * where
+  TypInfix 'Plus ('Just Int) ('Just Int) = 'Just Int
+  TypInfix 'LogicalAnd ('Just Bool) ('Just Bool) = 'Just Bool
+  TypInfix 'LogicalOr ('Just Bool) ('Just Bool) = 'Just Bool
   TypInfix 'GreaterThan pt1 pt2 = TypCmp pt1 pt2
   TypInfix 'Equal pt1 pt2 = TypCmp pt1 pt2
   TypInfix 'LessThan pt1 pt2 = TypCmp pt1 pt2
   TypInfix _ _ _ = 'Nothing
 
-type family TypCase (env :: Env) (ct :: Maybe T.Type) (elsetyp :: Maybe T.Type) (cases :: [(SPhrase, SPhrase)]) :: Maybe T.Type where
+type family TypCase (env :: Env) (ct :: Maybe *) (elsetyp :: Maybe *) (cases :: [(SPhrase, SPhrase)]) :: Maybe * where
   TypCase _ 'Nothing _ _ = 'Nothing
   TypCase _ ('Just _) elsetyp '[]  = elsetyp
   TypCase env ct elsetyp ('(k, v) ': cases) =
     If (Equal (Typ env k) ct && Equal (Typ env v) elsetyp) (TypCase env ct elsetyp cases) 'Nothing
 
-type family TypeDynamic (env :: Env) (rt :: Env) (ret :: T.Type) :: Maybe T.Type where
+type family TypeDynamic (env :: Env) (rt :: Env) (ret :: *) :: Maybe * where
   TypeDynamic _ '[] ret = 'Just ret
   TypeDynamic env ('(k,t) ': rt) ret =
     If (Equal (LookupVar env k) ('Just t)) (TypeDynamic env rt ret) 'Nothing
 
-type family TypAll (env :: Env) (ids :: [Symbol]) :: [Maybe T.Type] where
+type family TypAll (env :: Env) (ids :: [Symbol]) :: [Maybe *] where
   TypAll env '[] = '[]
   TypAll env (id ': ids) = LookupVar env id ': TypAll env ids
 
-type family TupleTypes (typs :: [Maybe T.Type]) (v :: [Value]) :: Bool where
+type family TupleTypes (typs :: [Maybe *]) (v :: [Value]) :: Bool where
   TupleTypes '[] '[] = 'True
   TupleTypes (t ': ts) (v ': vs) = Equal t ('Just (TypVal v)) && TupleTypes ts vs
   TupleTypes _ _ = 'False
 
-type family TypeIn (typs :: [Maybe T.Type]) (v :: [[Value]]) :: Maybe T.Type where
-  TypeIn _ '[] = 'Just 'T.Bool
+type family TypeIn (typs :: [Maybe *]) (v :: [[Value]]) :: Maybe * where
+  TypeIn _ '[] = 'Just Bool
   TypeIn ts (v ': vs) = If (TupleTypes ts v) (TypeIn ts vs) 'Nothing
 
-type family Typ (env :: Env) (phrase :: SPhrase) :: Maybe T.Type where
+type family Typ (env :: Env) (phrase :: SPhrase) :: Maybe * where
   Typ _ ('Constant c) = 'Just (TypVal c)
   Typ env ('Var v) = LookupVar env v
   Typ env ('UnaryAppl op p) = TypUnary op (Typ env p)
   Typ env ('InfixAppl op p1 p2) = TypInfix op (Typ env p1) (Typ env p2)
-  Typ env ('Case 'Nothing cases other) = TypCase env ('Just 'T.Bool) (Typ env other) cases
+  Typ env ('Case 'Nothing cases other) = TypCase env ('Just Bool) (Typ env other) cases
   Typ env ('Case ('Just cond) cases other) = TypCase env (Typ env cond) (Typ env other) cases
   Typ env ('In ids vss) = TypeIn (TypAll env ids) vss
   Typ env ('Dynamic rt t) = TypeDynamic env rt t
 
-type TypesBool env phr = Typ env phr ~ 'Just 'T.Bool
+type TypesBool env phr = Typ env phr ~ 'Just Bool
 
 type family IsLJDI (vs :: [Symbol]) (phrase :: SPhrase) :: Bool where
   IsLJDI vs ('InfixAppl 'LogicalAnd p1 p2) = IsLJDI vs p1 && IsLJDI vs p2
@@ -230,7 +230,7 @@ class EvalEnvRow (e :: EvalEnv) where
 instance EvalEnvRow '[] where
   toRow = RT.Empty
 
-instance (EvalEnvRow env, Recoverable v (V.Value (TypVal v))) => EvalEnvRow ('(k, v) ': env) where
+instance (EvalEnvRow env, Recoverable v (TypVal v)) => EvalEnvRow ('(k, v) ': env) where
   toRow = RT.Cons (recover @v Proxy) (toRow @env)
 
 type family Vars (env :: EvalEnv) :: [Symbol] where

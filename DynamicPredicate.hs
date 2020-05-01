@@ -23,6 +23,18 @@ data Value where
   String :: String -> Value
   deriving (Eq, Ord)
 
+class BoxValue t where
+  box :: t -> Value
+
+instance BoxValue Int where
+  box i = Int i
+
+instance BoxValue String where
+  box s = String s
+
+instance BoxValue Bool where
+  box b = Bool b
+
 -- data Predicate (r :: Env) where
 --  Constant :: Value -> Predicate '[]
 --  Var :: (KnownSymbol s, Recoverable t Types.Type) => Proxy '(s,t) -> Predicate '[ '(s, t)]

@@ -26,11 +26,6 @@ import Delta (fromSet)
 import Data.Set (fromList)
 import Tables (RecoverTables)
 
-data Test = Test { name :: String, fileQuota :: Int }
-
-instance FromRow Test where
-  fromRow = Test <$> field <*> field
-
 testdb :: (FromRow (Row r), Fields r, LensQueryable t r p) => Lens t r p fds -> IO [Row r]
 testdb (l :: Lens t r p fds) = do
   conn <- connect defaultConnectInfo {
@@ -54,16 +49,16 @@ testput l rs wif =
 
 -- Bohanonn et al. PODS 2016 examples
 
-type Albums = '[ '("album", 'T.String), '("quantity", 'T.Int)]
+type Albums = '[ '("album", String), '("quantity", Int)]
 
 albums = prim @"albums" @Albums
   @'[ '["album"] --> '["quantity"]]
 
 type Tracks = '[
-  '("track", 'T.String),
-  '("date", 'T.Int),
-  '("rating", 'T.Int),
-  '("album", 'T.String)]
+  '("track", String),
+  '("date", Int),
+  '("rating", Int),
+  '("album", String)]
 
 tracks = prim @"tracks" @Tracks
   @'[ '["track"] --> '["date", "rating"]]
@@ -74,10 +69,10 @@ tracks2 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks1
 
 tracks3 = select (var @"quantity" !> di 2) tracks2
 
-type Output = '[ '("quantity", 'T.Int), '("date", 'T.Int), '("rating", 'T.Int), '("album", 'T.String)]
-type Tracks3 = '[ '("track", 'T.String), '("rating", 'T.Int), '("album", 'T.String), '("quantity", 'T.Int)]
+type Output = '[ '("quantity", Int), '("date", Int), '("rating", Int), '("album", String)]
+type Tracks3 = '[ '("track", String), '("rating", Int), '("album", String), '("quantity", Int)]
 
-type PredRow = '[ '("quantity", 'T.Int), '("album", 'T.String)]
+type PredRow = '[ '("quantity", Int), '("album", String)]
 
 -- exampleUnchanged = lrows tracks3
 --   [ (4, "Lovesong", 5, "Paris"),
@@ -107,8 +102,8 @@ examplePut = rows @Tracks3
 my_hybrid_lenses b i s = do
     testdb tracks3 where
   pred = if b
-         then (dynamic @PredRow @'T.Bool (var @"quantity" !> di i))
-         else (dynamic @PredRow @'T.Bool (var @"album" != ds s))
+         then (dynamic @PredRow @Bool (var @"quantity" !> di i))
+         else (dynamic @PredRow @Bool (var @"album" != ds s))
   tracks1 = Lens.join tracks albums
   tracks2 = select pred tracks1
   tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2

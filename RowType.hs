@@ -2,7 +2,7 @@
              MultiParamTypeClasses, FlexibleInstances, PolyKinds,
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
-             AllowAmbiguousTypes, TypeApplications #-}
+             AllowAmbiguousTypes, TypeApplications, RankNTypes, QuantifiedConstraints #-}
 
 module RowType where
 
@@ -66,7 +66,7 @@ type family Find (env :: Env) (s :: Symbol) :: InEnvEvid where
 
 data Row (e :: Env) where
   Empty :: Row '[]
-  Cons :: t -> Row env -> Row ('( key, t) ': env)
+  Cons :: (Ord t, Eq t) => t -> Row env -> Row ('( key, t) ': env)
 
 -- Make
 
@@ -104,19 +104,27 @@ instance (FetchRow t evid (Row env)) => FetchRow t ('Skip evid) (Row ('(so, to) 
 
 type Fetchable s env t evid = (
   t ~ LookupType env s,
+  Ord t,
+  Eq t,
   evid ~ Find env s,
   FetchRow t evid (Row env))
+
+type Test s env t = forall evid. Fetchable s env t evid
 
 fetch :: forall s env t evid. Fetchable s env t evid => (Row env) -> t
 fetch row = intfetch @t @evid row
 
 
 
--- Row Updating
 type family UpdateType (s :: Symbol) (t :: *) (env :: Env) :: Env where
   UpdateType _ _ '[] = '[]
   UpdateType s t ('(s, _) ': env) = '(s, t) ': env
   UpdateType s t ('(k,v) ': env) = '(k, v) ': (UpdateType s t env)
+
+type Same s t k v env = UpdateType s t ('(k, v) : env) ~ ('(k, v) : UpdateType s t env)
+
+
+-- Row Updating
 
 type family SetType (s :: Symbol) (t :: *) (env :: Env) (i :: Maybe InEnvEvid) :: Env where
   SetType s t env 'Nothing = '(s, t) ': env
@@ -124,21 +132,28 @@ type family SetType (s :: Symbol) (t :: *) (env :: Env) (i :: Maybe InEnvEvid) :
   SetType s t ('(k, v) ': env) ('Just ('Skip ev)) = '(k, v) ': (SetType s t env ('Just ev))
 
 class UpdateRow s (t :: *) (r :: Env) (i :: Maybe InEnvEvid) where
-  intupdate :: t -> Row r -> Row (SetType s t r i)
+  intupdate :: Ord t => t -> Row r -> Row (SetType s t r i)
 
 instance UpdateRow s t ('(s, t1) ': env) ('Just 'Take) where
   intupdate v (Cons _ env) = Cons v env
 
-type Same s t k v env = UpdateType s t ('(k, v) : env) ~ ('(k, v) : UpdateType s t env)
-
 instance (UpdateRow s t env ('Just ev)) => UpdateRow s t ('(k, v) ': env) ('Just ('Skip ev)) where
-  intupdate v (Cons w row :: Row ('(k, v) ': env)) = Cons w (intupdate @s @t @env @('Just ev) v row) :: Row ('(k, v) ': SetType s t (env) ('Just ev))
+  intupdate v (Cons w row) = Cons w (intupdate @s @t @env @('Just ev) v row)
 
 instance UpdateRow s t env 'Nothing where
-  intupdate v row = Cons v row :: Row ('(s, t) ': env)
+  intupdate v row = Cons v row
 
-update :: forall s t env. (UpdateRow s t env (FindMaybe env s)) => t -> Row env -> Row (SetType s t env (FindMaybe env s))
+type Updatable s t env evid = (
+  evid ~ FindMaybe env s,
+  UpdateRow s t env evid,
+  Ord t)
+
+update :: forall s t env evid. (Updatable s t env evid) => t -> Row env -> Row (SetType s t env evid)
 update v row = intupdate @s @t @env @(FindMaybe env s) v row
+
+
+
+-- Revision
 
 class IntRevisable (rt :: Env) (rt' :: Env) (i :: Maybe InEnvEvid) where
   intrevise :: Row rt -> Row rt' -> Row rt
@@ -193,6 +208,9 @@ type family JoinColumns (e1 :: Env) (e2 :: Env) :: [Symbol] where
 type family JoinEnv (e1 :: Env) (e2 :: Env) :: Env where
   JoinEnv e1 e2 = ProjectEnv (SetIntersection (VarsEnv e1) (VarsEnv e2)) e1
 
+type family JoinRow (r1 :: *) (r2 :: *) :: * where
+  JoinRow (Row e1) (Row e2) = Row (JoinEnv e1 e2)
+
 type family IsOverlappingJoinEx (e1 :: Env) (e2 :: Env) (join :: Env) :: Bool where
   IsOverlappingJoinEx e1 e2 join = Equal (ProjectEnv (VarsEnv join) e2) join
 
@@ -226,26 +244,26 @@ row3 = Cons 5 $ Cons True $ Cons "h" RowType.Empty
 instance FromRow (Row '[]) where
   fromRow = return RowType.Empty
 
-instance (Fld.FromField t, FromRow (Row xs)) => FromRow (Row ('(k, t) ': xs)) where
+instance (Ord t, Fld.FromField t, FromRow (Row xs)) => FromRow (Row ('(k, t) ': xs)) where
   fromRow = Cons <$> field <*> fromRow @(Row xs)
 
 
 -- Equal
+comp :: Row e -> Row e -> Ordering
+comp Empty RowType.Empty = EQ
+comp (Cons v vs) (Cons v' vs') = compare v v' <> comp vs vs'
 
-instance Eq (Row '[]) where
-  RowType.Empty == RowType.Empty = True
-
-instance (Eq t, Eq (Row env)) => Eq (Row ( '(k, t) ': env)) where
-  Cons v vs == Cons v' vs' = v == v' && vs == vs'
-
+eq :: Row e -> Row e -> Bool
+eq Empty Empty = True
+eq (Cons v vs) (Cons v' vs') = v == v' && eq vs vs'
 
 -- Compare
 
-instance Ord (Row '[]) where
-  compare Empty RowType.Empty = EQ
+instance Eq (Row e) where
+  r1 == r2 = eq r1 r2
 
-instance (Ord t, Ord (Row env)) => Ord (Row ('(k, t) ': env)) where
-  compare (Cons v vs) (Cons v' vs') = compare v v' <> compare vs vs'
+instance Ord (Row e) where
+  compare r1 r2 = comp r1 r2
 
 
 -- Helper Syntax
@@ -260,19 +278,21 @@ type family TupleType (e :: Env) :: * where
 class ToRow rt vals where
   toRow :: vals -> Row rt
 
-instance ToRow '[ '(k, t)] (Only t) where
+type Req t = (Ord t, Eq t)
+
+instance (Req t) => ToRow '[ '(k, t)] (Only t) where
   toRow (Only v) = Cons v Empty
 
-instance ToRow '[ '(k1, t1), '(k2, t2)] (t1, t2) where
+instance (Req t1, Req t2) => ToRow '[ '(k1, t1), '(k2, t2)] (t1, t2) where
   toRow (v1, v2) = Cons (v1) $ Cons (v2) Empty
 
-instance ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3)] (t1, t2, t3) where
+instance (Req t1, Req t2, Req t3) => ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3)] (t1, t2, t3) where
   toRow (v1, v2, v3) = Cons v1 $ Cons v2 $ Cons v3 Empty
 
-instance ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4)] (t1, t2, t3, t4) where
+instance (Req t1, Req t2, Req t3, Req t4) => ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4)] (t1, t2, t3, t4) where
   toRow (v1, v2, v3, v4) = Cons v1 $ Cons v2 $ Cons v3 $ Cons v4 Empty
 
-instance ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4), '(k5, t5)] (t1, t2, t3, t4, t5) where
+instance (Req t1, Req t2, Req t3, Req t4, Req t5) => ToRow '[ '(k1, t1), '(k2, t2), '(k3, t3), '(k4, t4), '(k5, t5)] (t1, t2, t3, t4, t5) where
   toRow (v1, v2, v3, v4, v5) = Cons v1 $ Cons v2 $ Cons v3 $ Cons v4 $ Cons v5 Empty
 
 --fetch :: forall (s :: Symbol) (typ :: Types.Type) (env :: Env).

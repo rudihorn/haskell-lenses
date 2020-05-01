@@ -66,13 +66,13 @@ s = of_static @('P.Constant ('P.String v))
 b :: forall v. Recoverable v Bool => HPhrase ('P.Constant ('P.Bool v))
 b = of_static @('P.Constant ('P.Bool v))
 
-di :: Int -> HPhrase ('P.Dynamic '[] 'T.Int)
+di :: Int -> HPhrase ('P.Dynamic '[] Int)
 di v = HPred (P.Constant $ DP.Int v)
 
-ds :: String -> HPhrase ('P.Dynamic '[] 'T.String)
+ds :: String -> HPhrase ('P.Dynamic '[] String)
 ds v = HPred (P.Constant $ DP.String v)
 
-db :: Bool -> HPhrase ('P.Dynamic '[] 'T.Bool)
+db :: Bool -> HPhrase ('P.Dynamic '[] Bool)
 db v = HPred (P.Constant $ DP.Bool v)
 
 ifthen :: forall pcond pthen pelse. HPhrase pcond -> HPhrase pthen -> HPhrase pelse ->

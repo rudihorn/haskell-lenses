@@ -28,13 +28,13 @@ instance Show Type where
   show Bool = "bool"
   show Int = "int"
 
-instance Recoverable ('String) Type where
+instance Recoverable (String) Type where
   recover Proxy = String
 
-instance Recoverable ('Bool) Type where
+instance Recoverable (Bool) Type where
   recover Proxy = Bool
 
-instance Recoverable ('Int) Type where
+instance Recoverable (Int) Type where
   recover Proxy = Int
 
 recover_type :: Recoverable i Type => (Proxy i) -> Type

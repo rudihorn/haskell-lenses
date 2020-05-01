@@ -14,7 +14,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
-import DynamicPredicate (DPhrase, Value)
+import DynamicPredicate (DPhrase, Value, BoxValue, box)
 import RowType (Row)
 
 import qualified DynamicPredicate as DP
@@ -22,21 +22,16 @@ import qualified Predicate as P
 import qualified RowType as R
 import qualified Value as V
 
-fromRValue :: V.Value t -> Value
-fromRValue (V.Int i) = DP.Int i
-fromRValue (V.String s) = DP.String s
-fromRValue (V.Bool b) = DP.Bool b
-
 class LookupMap rt where
   lookupMap :: Map.Map String (Row rt -> Value)
 
 instance LookupMap '[] where
  lookupMap = Map.empty
 
-instance (KnownSymbol k, LookupMap rt) => LookupMap ('(k, t) ': rt) where
+instance (KnownSymbol k, LookupMap rt, BoxValue t) => LookupMap ('(k, t) ': rt) where
   lookupMap = Map.insert (symbolVal (Proxy :: Proxy k)) thisF extMap where
     thisF :: Row ('(k, t) ': rt) -> Value
-    thisF (R.Cons v _) = fromRValue v
+    thisF (R.Cons v _) = box v
     extMap = Map.map upd $ lookupMap @rt
     upd :: (Row rt -> Value) -> (Row ('(k, t) ': rt) -> Value)
     upd f (R.Cons _ r) = f r

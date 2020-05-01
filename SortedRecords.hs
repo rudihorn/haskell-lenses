@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables, TypeApplications, AllowAmbiguousTypes,
              FlexibleContexts, ConstraintKinds, UndecidableInstances,
-             MultiParamTypeClasses #-}
+             MultiParamTypeClasses, RankNTypes #-}
 
 module SortedRecords where
 
@@ -48,7 +48,7 @@ join rs ss = Set.fromList $ concat $ map f_entry $ Set.toList rs where
     Nothing -> []
     Just s -> [R.project @(R.VarsEnv rt'') (append s r)]
 
-project :: forall s rt. Project s rt => RecordsSet rt -> RecordsSet (ProjectEnv s rt)
+project :: forall s rt. (Project s rt) => RecordsSet rt -> RecordsSet (ProjectEnv s rt)
 project rs = Set.map (R.project @s) rs
 
 map_rs :: (Row rt -> Row rt') -> RecordsSet rt -> RecordsSet rt'

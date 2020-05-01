@@ -212,17 +212,17 @@ type family EvalRowType (e :: EvalEnv) :: Env where
   EvalRowType '[] = '[]
   EvalRowType ('(k, v) ': xs) = '(k, TypVal v) ': EvalRowType xs
 
-instance Recoverable ('Bool 'False) (V.Value 'T.Bool) where
-  recover Proxy = V.Bool False
+instance Recoverable ('Bool 'False) Bool where
+  recover Proxy = False
 
-instance Recoverable ('Bool 'True) (V.Value 'T.Bool) where
-  recover Proxy = V.Bool True
+instance Recoverable ('Bool 'True) Bool where
+  recover Proxy = True
 
-instance KnownNat i => Recoverable ('Int i) (V.Value 'T.Int) where
-  recover Proxy = V.Int (fromIntegral $ natVal @i Proxy)
+instance KnownNat i => Recoverable ('Int i) Int where
+  recover Proxy = fromIntegral $ natVal @i Proxy
 
-instance KnownSymbol s => Recoverable ('String s) (V.Value 'T.String) where
-  recover Proxy = V.String (symbolVal @s Proxy)
+instance KnownSymbol s => Recoverable ('String s) (String) where
+  recover Proxy = symbolVal @s Proxy
 
 class EvalEnvRow (e :: EvalEnv) where
   toRow :: Row (EvalRowType e)
@@ -230,7 +230,7 @@ class EvalEnvRow (e :: EvalEnv) where
 instance EvalEnvRow '[] where
   toRow = RT.Empty
 
-instance (EvalEnvRow env, Recoverable v (TypVal v)) => EvalEnvRow ('(k, v) ': env) where
+instance (EvalEnvRow env, Ord (TypVal v), Eq (TypVal v), Recoverable v (TypVal v)) => EvalEnvRow ('(k, v) ': env) where
   toRow = RT.Cons (recover @v Proxy) (toRow @env)
 
 type family Vars (env :: EvalEnv) :: [Symbol] where

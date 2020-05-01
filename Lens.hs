@@ -168,6 +168,6 @@ join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =>
     Lens (ts1 :++ ts2) rtnew (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
 join l1 l2 = Join l1 l2
 
-lens1 = prim @"test1" @'[ '("A", 'T.Int), '("B", 'T.String)] @'[ '["A"] --> '["B"]]
+lens1 = prim @"test1" @'[ '("A", Int), '("B", String)] @'[ '["A"] --> '["B"]]
 lens2 = select (var @"A" !> i @30) lens1
 lens3 = dropl @'[ '("B", 'P.String "test")] @'["A"] lens2

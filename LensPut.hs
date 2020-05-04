@@ -22,7 +22,7 @@ import Label (IsSubset, AdjustOrder, Subtract)
 import Lens (Droppable, Lens(..), TableKey)
 import LensDatabase (LensDatabase(..), LensQuery, Columns, query, query_ex, execute)
 import LensQuery (build_delete, build_insert, build_update, column_map, query_predicate)
-import RowType (Env, JoinColumns, Project, ProjectEnv, VarsEnv)
+import RowType (Env, InterCols, Project, ProjectEnv, VarsEnv)
 import SortedRecords (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
 import Tables (RecoverTables, recover_tables)
 import Database.PostgreSQL.Simple.FromRow
@@ -123,12 +123,12 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
   pred_n = DP.conjunction [affected @fds2 delta_or, query_predicate l2]
   ts1 = recover_tables @ts1 Proxy
   ts2 = recover_tables @ts2 Proxy
-  pjoin :: (Project (JoinColumns rt1 rt2) rtl, ToDynamic (ProjectEnv (JoinColumns rt1 rt2) rtl)) =>
+  pjoin :: (Project (InterCols rt1 rt2) rtl, ToDynamic (ProjectEnv (InterCols rt1 rt2) rtl)) =>
     Lens tsl rtl pl fdsl -> RecordsDelta rtl -> DPhrase
   pjoin (l :: Lens tsl rtl pl fdsl) delta =
     DP.conjunction
-      [P.In (recover @(JoinColumns rt1 rt2) Proxy)
-         (toDPList $ Set.toList $ project @(JoinColumns rt1 rt2) (delta_union delta)),
+      [P.In (recover @(InterCols rt1 rt2) Proxy)
+         (toDPList $ Set.toList $ project @(InterCols rt1 rt2) (delta_union delta)),
        query_predicate l]
 
 

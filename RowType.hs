@@ -143,12 +143,13 @@ instance (UpdateRow s t env ('Just ev)) => UpdateRow s t ('(k, v) ': env) ('Just
 instance UpdateRow s t env 'Nothing where
   intupdate v row = Cons v row
 
-type Updatable s t env evid = (
+type Updatable s t env tnew evid = (
   evid ~ FindMaybe env s,
   UpdateRow s t env evid,
+  tnew ~ SetType s t env evid,
   Ord t)
 
-update :: forall s t env evid. (Updatable s t env evid) => t -> Row env -> Row (SetType s t env evid)
+update :: forall s t env tnew evid. (Updatable s t env tnew evid) => t -> Row env -> Row tnew
 update v row = intupdate @s @t @env @(FindMaybe env s) v row
 
 
@@ -202,25 +203,28 @@ normalise (r :: Row e) = project @(SymAsSet (VarsEnv e)) r
 
 -- Join
 
-type family JoinColumns (e1 :: Env) (e2 :: Env) :: [Symbol] where
-  JoinColumns e1 e2 = SetIntersection (VarsEnv e1) (VarsEnv e2)
+type family InterCols (e1 :: Env) (e2 :: Env) :: [Symbol] where
+  InterCols e1 e2 = SetIntersection (VarsEnv e1) (VarsEnv e2)
 
-type family JoinEnv (e1 :: Env) (e2 :: Env) :: Env where
-  JoinEnv e1 e2 = ProjectEnv (SetIntersection (VarsEnv e1) (VarsEnv e2)) e1
+type family InterEnv (e1 :: Env) (e2 :: Env) :: Env where
+  InterEnv e1 e2 = ProjectEnv (InterCols e1 e2) e1
 
-type family JoinRow (r1 :: *) (r2 :: *) :: * where
-  JoinRow (Row e1) (Row e2) = Row (JoinEnv e1 e2)
+type family InterRow (r1 :: *) (r2 :: *) :: * where
+  InterRow (Row e1) (Row e2) = Row (InterEnv e1 e2)
 
 type family IsOverlappingJoinEx (e1 :: Env) (e2 :: Env) (join :: Env) :: Bool where
   IsOverlappingJoinEx e1 e2 join = Equal (ProjectEnv (VarsEnv join) e2) join
 
 type family IsOverlappingJoin (e1 :: Env) (e2 :: Env) :: Bool where
-  IsOverlappingJoin e1 e2 = IsOverlappingJoinEx e1 e2 (JoinEnv e1 e2)
+  IsOverlappingJoin e1 e2 = IsOverlappingJoinEx e1 e2 (InterEnv e1 e2)
 
 type OverlappingJoin e1 e2 = OkOrError (IsOverlappingJoin e1 e2) ('Text "The types for the join column don't match.")
 
-type family JoinRowTypes (e1 :: Env) (e2 :: Env) :: Env where
-  JoinRowTypes e1 e2 = (RemoveEnv (VarsEnv (JoinEnv e1 e2)) e1) :++ e2
+type family RemoveInterEnv (e1 :: Env) (e2 :: Env) :: Env where
+  RemoveInterEnv e1 e2 = (RemoveEnv (VarsEnv (InterEnv e1 e2)) e1)
+
+type family JoinEnv (e1 :: Env) (e2 :: Env) :: Env where
+  JoinEnv e1 e2 = RemoveInterEnv e1 e2 :++ e2
 
 append :: Row rt -> Row rt' -> Row (rt :++ rt')
 append Empty rt = rt

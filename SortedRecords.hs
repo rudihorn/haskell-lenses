@@ -16,7 +16,7 @@ import Delta (Delta)
 import DynamicPredicate (DPhrase)
 import Label (IsSubset, AdjustOrder)
 import FunDep (FunDep, Left, Right)
-import RowType (append, Env, Row, Project, ProjectEnv, VarsEnv, ToRow, toRow)
+import RowType (append, Env, Row, Project, ProjectEnv, RemoveInterEnv, JoinEnv, VarsEnv, ToRow, toRow)
 
 import qualified DynamicPredicate as DP
 import qualified Label as L
@@ -25,28 +25,28 @@ import qualified RowType as R
 type RecordsSet rt = Set (Row rt)
 type RecordsDelta rt = Delta (Row rt)
 
-type RemainingColumns rt rt' = L.Subtract (R.VarsEnv rt') (R.JoinColumns rt rt')
+type RemainingColumns rt rt' = L.Subtract (R.VarsEnv rt') (R.InterCols rt rt')
 
-type ProjectJoin rt rt' rt'' = ProjectEnv (R.JoinColumns rt rt') rt''
+type ProjectJoin rt rt' rt'' = ProjectEnv (R.InterCols rt rt') rt''
 
 type Joinable rt rt' rt'' =
-  (ProjectEnv (R.VarsEnv rt'') (ProjectEnv (RemainingColumns rt rt') rt' :++ rt) ~ rt'',
+  (ProjectEnv (R.VarsEnv rt'') (ProjectEnv (VarsEnv (RemoveInterEnv rt rt')) rt :++ rt') ~ rt'',
    ProjectJoin rt rt' rt ~ ProjectJoin rt rt' rt',
-   Project (R.JoinColumns rt rt') rt,
-   Project (R.JoinColumns rt rt') rt',
-   Project (RemainingColumns rt rt') rt',
-   Project (R.VarsEnv rt'') (ProjectEnv (RemainingColumns rt rt') rt' :++ rt))
+   Project (R.InterCols rt rt') rt,
+   Project (R.InterCols rt rt') rt',
+   Project (VarsEnv (RemoveInterEnv rt rt')) rt,
+   Project (R.VarsEnv rt'') (ProjectEnv (VarsEnv (RemoveInterEnv rt rt')) rt :++ rt'))
 
 join :: forall rt'' rt rt'. Joinable rt rt' rt'' => RecordsSet rt -> RecordsSet rt' -> RecordsSet rt''
-join rs ss = Set.fromList $ concat $ map f_entry $ Set.toList rs where
-  join_map = Map.fromList $ map join_entry $ Set.toList ss
-  join_entry s =
-    (R.project @(R.JoinColumns rt rt') s,
-     R.project @(RemainingColumns rt rt') s)
-  f_entry r =
-    case join_map !? R.project @(R.JoinColumns rt rt') r of
+join rs ss = Set.fromList $ concat $ map f_entry $ Set.toList ss where
+  join_map = Map.fromList $ map join_entry $ Set.toList rs
+  join_entry r =
+    (R.project @(R.InterCols rt rt') r,
+     R.project @(VarsEnv (RemoveInterEnv rt rt')) r)
+  f_entry s =
+    case join_map !? R.project @(R.InterCols rt rt') s of
     Nothing -> []
-    Just s -> [R.project @(R.VarsEnv rt'') (append s r)]
+    Just r -> [R.project @(R.VarsEnv rt'') (append r s)]
 
 project :: forall s rt. (Project s rt) => RecordsSet rt -> RecordsSet (ProjectEnv s rt)
 project rs = Set.map (R.project @s) rs

@@ -20,7 +20,7 @@ import Label (NoDuplicates, IsDisjoint, Subset, Subtract, SymAsSet)
 import Predicate ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
                   HasCols, LJDI, ReplacePredicate, Simplify,
                   SPhrase, TypesBool, Vars)
-import RowType (Env, Project, ProjectEnv, JoinRowTypes, RecoverEnv,
+import RowType (Env, Project, ProjectEnv, JoinEnv, RecoverEnv,
                 RemoveEnv, OverlappingJoin, VarsEnv)
 import SortedRecords (Revisable, RevisableFd, RecordsSet, rows)
 import Tables (DisjointTables, RecoverTables, Tables)
@@ -72,13 +72,13 @@ type Lensable ts rt p fds fdsnew =
    Recoverable (VarsEnv (ProjectEnv (UpdateColumns rt fdsnew) rt)) [String])
 
 type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
-  (rtnew ~ JoinRowTypes rt1 rt2,
-   joincols ~ R.JoinColumns rt1 rt2,
+  (rtnew ~ JoinEnv rt1 rt2,
+   joincols ~ R.InterCols rt1 rt2,
    LensCommon ts1 rt1 p1 fds1,
    LensCommon ts2 rt2 p2 fds2,
    DisjointTables ts1 ts2, OverlappingJoin rt1 rt2,
    IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2,
-   Subset (VarsEnv rt2) (TransClosure (R.JoinColumns rt1 rt2) fds2),
+   Subset (VarsEnv rt2) (TransClosure joincols fds2),
    InTreeForm fds1, InTreeForm fds2,
    FromRow (R.Row rtnew),
    ProjectEnv (VarsEnv rt1) rtnew ~ rt1,

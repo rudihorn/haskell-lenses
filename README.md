@@ -13,7 +13,7 @@ in `Scratch.hs` and can be loaded using the `:l Scratch` pragma.
 
 ## Example functions
 
-`test_ex : lens -> records` queries a lens.
+`test_get : lens -> records` queries a lens.
 
 `test_put : lens -> records -> unit` updates a lens with the supplied records.
 

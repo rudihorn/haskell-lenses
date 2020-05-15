@@ -26,26 +26,30 @@ import Delta (fromSet)
 import Data.Set (fromList)
 import Tables (RecoverTables)
 
-testdb :: (FromRow (Row r), Fields r, LensQueryable t r p) => Lens t r p fds -> IO [Row r]
-testdb (l :: Lens t r p fds) = do
-  conn <- connect defaultConnectInfo {
+db_connect = connect defaultConnectInfo {
     connectDatabase = "links",
     connectUser = "links",
     connectPassword = "links"
   }
+
+test_get :: (FromRow (Row r), Fields r, LensQueryable t r p) => Lens t r p fds -> IO [Row r]
+test_get (l :: Lens t r p fds) = do
+  conn <- db_connect
   res <- query conn l
   -- mapM_ Prelude.print res
   return res
 
-testput :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
-  Lens ts rt p fds -> RecordsSet rt -> Bool -> IO ()
-testput l rs wif =
-  do conn <- connect defaultConnectInfo {
-         connectDatabase = "links",
-         connectUser = "links",
-         connectPassword = "links"
-       }
-     put conn l rs wif
+test_put_debug :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
+  Lens ts rt p fds -> RecordsSet rt -> IO ()
+test_put_debug l rs =
+  do conn <- db_connect
+     put conn l rs True
+
+test_put :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
+  Lens ts rt p fds -> RecordsSet rt -> IO ()
+test_put l rs =
+  do conn <- db_connect
+     put conn l rs False
 
 -- Bohanonn et al. PODS 2016 examples
 
@@ -100,7 +104,7 @@ examplePut = rows @Tracks3
 
 -- my_hybrid_lenses :: Bool -> Int -> String -> IO [Row Output]
 my_hybrid_lenses b i s = do
-    testdb tracks3 where
+    test_get tracks3 where
   pred = if b
          then (dynamic @PredRow @Bool (var @"quantity" !> di i))
          else (dynamic @PredRow @Bool (var @"album" != ds s))
@@ -112,6 +116,6 @@ type Fds = '[ '["album"] --> '["quantity"],
               '["quantity"] --> '["date", "rating"]]
 
 affect = do
-  res <- testdb tracks3
+  res <- test_get tracks3
   q <- DP.print $ affected @Fds $ fromList res
   return q

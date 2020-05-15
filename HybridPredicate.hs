@@ -2,7 +2,7 @@
              MultiParamTypeClasses, FlexibleInstances, PolyKinds,
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
-             TypeApplications, AllowAmbiguousTypes #-}
+             TypeApplications, AllowAmbiguousTypes, OverloadedLabels #-}
 
 
 module HybridPredicate where
@@ -10,6 +10,7 @@ module HybridPredicate where
 import Common
 import Data.Type.Set
 import GHC.TypeLits
+import GHC.OverloadedLabels (IsLabel(..))
 import RowType
 import qualified Types as T
 import Predicate
@@ -29,6 +30,9 @@ of_static = HPred @p $ recover @p Proxy
 
 dynamic :: forall rt ret (p :: SPhrase). (P.Typ rt p ~ 'Just ret) => HPhrase p -> HPhrase ('P.Dynamic rt ret)
 dynamic (HPred p) = HPred p
+
+instance forall v p. (KnownSymbol v, p ~ 'P.Var v) => IsLabel v (HPhrase p) where
+  fromLabel = of_static @('P.Var v)
 
 var :: forall v. KnownSymbol v => HPhrase ('P.Var v)
 var = of_static @('P.Var v)

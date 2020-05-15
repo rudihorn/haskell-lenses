@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, ScopedTypeVariables, TypeApplications, DataKinds,
-             AllowAmbiguousTypes #-}
+             AllowAmbiguousTypes, OverloadedLabels #-}
 
 module Scratch where
 
@@ -67,7 +67,7 @@ tracks1 = join tracks albums
 
 tracks2 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks1
 
-tracks3 = select (var @"quantity" !> di 2) tracks2
+tracks3 = select (#quantity !> di 2) tracks2
 
 type Output = '[ '("quantity", Int), '("date", Int), '("rating", Int), '("album", String)]
 type Tracks3 = '[ '("track", String), '("rating", Int), '("album", String), '("quantity", Int)]

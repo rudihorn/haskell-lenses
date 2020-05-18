@@ -71,15 +71,9 @@ type Lensable ts rt p fds fdsnew =
    ToDynamic (ProjectEnv (UpdateColumns rt fdsnew) rt),
    Recoverable (VarsEnv (ProjectEnv (UpdateColumns rt fdsnew) rt)) [String])
 
-type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
-  (rtnew ~ JoinEnv rt1 rt2,
-   joincols ~ R.InterCols rt1 rt2,
-   LensCommon ts1 rt1 p1 fds1,
+type JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
+  (LensCommon ts1 rt1 p1 fds1,
    LensCommon ts2 rt2 p2 fds2,
-   DisjointTables ts1 ts2, OverlappingJoin rt1 rt2,
-   IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2,
-   Subset (VarsEnv rt2) (TransClosure joincols fds2),
-   InTreeForm fds1, InTreeForm fds2,
    FromRow (R.Row rtnew),
    ProjectEnv (VarsEnv rt1) rtnew ~ rt1,
    ProjectEnv (VarsEnv rt2) rtnew ~ rt2,
@@ -92,19 +86,31 @@ type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
    ToDynamic (ProjectEnv joincols rt2),
    RT.Joinable rt1 rt2 rtnew)
 
-type Selectable rt p pred fds pnew =
-  (pnew ~ Simplify (p :& pred),
-   TypesBool rt p, IgnoresOutputs pred fds, InTreeForm fds,
-   Affected fds rt, LookupMap rt, Revisable (TopologicalSort fds) rt rt,
+type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
+  (rtnew ~ JoinEnv rt1 rt2,
+   joincols ~ R.InterCols rt1 rt2,
+   DisjointTables ts1 ts2,
+   OverlappingJoin rt1 rt2,
+   IgnoresOutputs p1 fds1, IgnoresOutputs p2 fds2,
+   Subset (VarsEnv rt2) (TransClosure joincols fds2),
+   InTreeForm fds1, InTreeForm fds2,
+   JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols)
+
+type SelectImplConstraints rt p pred fds =
+  (Affected fds rt, LookupMap rt, Revisable (TopologicalSort fds) rt rt,
    FromRow (R.Row rt),
    R.Fields rt)
 
-type Droppable env key rt pred fds rtnew prednew fdsnew =
-  (rtnew ~ RemoveEnv (Vars env) rt,
-   prednew ~ Simplify (ReplacePredicate env pred),
-   fdsnew ~ DropColumn (Vars env) fds,
-   HasCols env rt, LJDI (Vars env) pred, DefVI env pred,
-   RT.Joinable rtnew (EvalRowType env) rt, RecoverEnv rt,
+type Selectable rt p pred fds pnew =
+  (pnew ~ Simplify (p :& pred),
+   TypesBool rt p,
+   IgnoresOutputs pred fds,
+   InTreeForm fds,
+   SelectImplConstraints rt p pred fds)
+
+type DropImplConstraints env key rt pred fds rtnew =
+  (RT.Joinable rtnew (EvalRowType env) rt,
+   RecoverEnv rt,
    EvalEnvRow env, FromRow (R.Row rtnew),
    RevisableFd (key --> Vars env) rt (R.ProjectEnv (key :++ P.Vars env) rt),
    Recoverable (SymAsSet key) [String],
@@ -112,6 +118,13 @@ type Droppable env key rt pred fds rtnew prednew fdsnew =
    Affected '[key --> Vars env] rtnew,
    FromRow (R.Row (ProjectEnv (key :++ P.Vars env) rt)),
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
+
+type Droppable env key rt pred fds rtnew prednew fdsnew =
+  (rtnew ~ RemoveEnv (Vars env) rt,
+   prednew ~ Simplify (ReplacePredicate env pred),
+   fdsnew ~ DropColumn (Vars env) fds,
+   HasCols env rt, LJDI (Vars env) pred, DefVI env pred,
+   DropImplConstraints env key rt pred fds rtnew)
 
 type Debuggable rt =
   (R.Fields rt)

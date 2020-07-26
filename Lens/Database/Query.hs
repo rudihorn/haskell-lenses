@@ -4,7 +4,7 @@
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
              AllowAmbiguousTypes, TypeApplications, OverloadedStrings #-}
 
-module LensQuery where
+module Lens.Database.Query where
 
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
@@ -22,7 +22,7 @@ import Lens.FunDep.Affected (ToDynamic, toDPList, toDynamic)
 import Lens.Predicate.Hybrid (HPhrase(..))
 import Tables (RecoverTables, recover_tables)
 import Lens.Record.Base (Row, VarsEnv, RecoverEnv, recover_env)
-import LensDatabase (LensQueryable, LensDatabase(..), Columns)
+import Lens.Database.Base (LensQueryable, LensDatabase(..), Columns)
 import Lens.Record.Sorted (RecordsSet)
 import Lens.Helpers.Format(build_sep_comma, build_sep_space)
 

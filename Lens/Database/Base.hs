@@ -2,11 +2,11 @@
              ConstraintKinds, PolyKinds, DataKinds, MultiParamTypeClasses,
              KindSignatures #-}
 
-module LensDatabase where
+module Lens.Database.Base where
 
 import Data.Text.Lazy.Builder (Builder)
 import Data.Type.Set (Proxy(..))
-import Database.PostgreSQL.Simple.FromRow
+import Database.PostgreSQL.Simple.FromRow (FromRow(..))
 
 import qualified Data.Map.Strict as Map
 

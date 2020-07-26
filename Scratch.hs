@@ -4,19 +4,19 @@
 module Scratch where
 
 import Data.Set (fromList)
+import Data.Text.Format
 import Database.PostgreSQL.Simple(query_, connect, defaultConnectInfo, connectDatabase, connectUser, connectPassword, Connection)
 import Database.PostgreSQL.Simple.Types(Query(..), fromQuery)
 import Database.PostgreSQL.Simple.Internal(escapeIdentifier, escapeStringConn)
 import Database.PostgreSQL.Simple.FromRow
 
+import Lens
 import Lens.FunDep.Affected (affected)
 import Lens.Record.Base (RecoverEnv(..), Row, Fields)
-import Lens
-import LensQuery
+import Lens.Database.Query
 import Lens.Predicate.Hybrid
-import Data.Text.Format
-import LensDatabase (LensGet, get)
-import LensQueryPostgres (PostgresDatabase)
+import Lens.Database.Base (LensGet, get)
+import Lens.Database.Postgres (PostgresDatabase)
 import LensPut
 import FunDep
 import Lens.Record.Sorted (RecordsSet, rows)

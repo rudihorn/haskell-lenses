@@ -2,7 +2,7 @@
              DataKinds, PolyKinds, KindSignatures, UndecidableInstances,
              TypeApplications #-}
 
-module LensQueryPostgres (PostgresDatabase, query) where
+module Lens.Database.Postgres (PostgresDatabase, query) where
 
 import Data.Either (fromRight)
 import Data.Text.Format (build, Only(..))
@@ -22,8 +22,8 @@ import Database.PostgreSQL.Simple.FromRow (FromRow)
 
 import Lens.Record.Base (recover_env)
 import Lens (FromRowHack(..), lensToFromRowHack)
-import LensQuery (build_query, build_query_ex)
-import LensDatabase (LensDatabase(..), LensQuery(..))
+import Lens.Database.Base (LensDatabase(..), LensQuery(..))
+import Lens.Database.Query (build_query, build_query_ex)
 
 import Lens.Predicate.Dynamic as DP
 

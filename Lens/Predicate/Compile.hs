@@ -1,10 +1,14 @@
+{-
+  Compilation is used to turn dynamic predicates into executable Haskell functions.
+-}
+
 {-# LANGUAGE GADTs, DataKinds, KindSignatures, TypeOperators, TypeFamilies,
              MultiParamTypeClasses, FlexibleInstances, PolyKinds,
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
              TypeApplications, OverloadedStrings #-}
 
-module CompilePredicate where
+module Lens.Predicate.Compile where
 
 import GHC.TypeLits
 import Data.Type.Set (Proxy(..))
@@ -14,13 +18,12 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
-import DynamicPredicate (DPhrase, Value, BoxValue, box)
-import RowType (Row)
+import Lens.Predicate.Dynamic (DPhrase, Value, BoxValue, box)
+import Lens.Record.Base (Row)
 
-import qualified DynamicPredicate as DP
-import qualified Predicate as P
-import qualified RowType as R
-import qualified Value as V
+import qualified Lens.Predicate.Dynamic as DP
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Record.Base as R
 
 class LookupMap rt where
   lookupMap :: Map.Map String (Row rt -> Value)
@@ -64,6 +67,7 @@ unary_appl :: P.UnaryOperator -> Value -> Value
 unary_appl (P.UnaryMinus) (DP.Int i) = DP.Int $ -i
 unary_appl (P.Negate) (DP.Bool b) = DP.Bool $ not b
 
+{-| Compile the dynamic predicate into a function taking a row and returning the computed value. -}
 compile :: forall rt. LookupMap rt => DPhrase -> (Row rt -> Value)
 compile (P.Constant v) = \ _ ->  v
 compile (P.Var v) = lookupMap @rt ! v

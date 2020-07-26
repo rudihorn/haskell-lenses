@@ -11,7 +11,7 @@ import Data.Type.Set (Proxy(..))
 
 import Common
 
-import qualified Types as T
+import qualified Lens.Types as T
 
 data Value (typ :: T.Type) where
   String :: String -> Value 'T.String

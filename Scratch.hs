@@ -3,28 +3,29 @@
 
 module Scratch where
 
-import Affected (affected)
-import Database.PostgreSQL.Simple(query_, connect, defaultConnectInfo, connectDatabase, connectUser, connectPassword)
+import Data.Set (fromList)
+import Database.PostgreSQL.Simple(query_, connect, defaultConnectInfo, connectDatabase, connectUser, connectPassword, Connection)
 import Database.PostgreSQL.Simple.Types(Query(..), fromQuery)
 import Database.PostgreSQL.Simple.Internal(escapeIdentifier, escapeStringConn)
 import Database.PostgreSQL.Simple.FromRow
--- import Database.PostgreSQL.Simple.Types
-import qualified Types as T
-import RowType
+
+import Lens.FunDep.Affected (affected)
+import Lens.Record.Base (RecoverEnv(..), Row, Fields)
 import Lens
 import LensQuery
-import qualified Predicate as P
-import qualified DynamicPredicate as DP
-import HybridPredicate
+import Lens.Predicate.Hybrid
 import Data.Text.Format
-import LensDatabase (LensQueryable)
-import LensQueryPostgres (query)
+import LensDatabase (LensGet, get)
+import LensQueryPostgres (PostgresDatabase)
 import LensPut
 import FunDep
-import SortedRecords (RecordsSet, rows)
+import Lens.Record.Sorted (RecordsSet, rows)
 import Delta (fromSet)
-import Data.Set (fromList)
 import Tables (RecoverTables)
+
+import qualified Lens.Types as T
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Predicate.Dynamic as DP
 
 db_connect = connect defaultConnectInfo {
     connectDatabase = "links",
@@ -32,10 +33,10 @@ db_connect = connect defaultConnectInfo {
     connectPassword = "links"
   }
 
-test_get :: (FromRow (Row r), Fields r, LensQueryable t r p) => Lens t r p fds -> IO [Row r]
+test_get :: (Fields r, LensGet t r p fds PostgresDatabase) => Lens t r p fds -> IO [Row r]
 test_get (l :: Lens t r p fds) = do
   conn <- db_connect
-  res <- query conn l
+  res <- get conn l
   -- mapM_ Prelude.print res
   return res
 
@@ -43,13 +44,13 @@ test_put_debug :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
   Lens ts rt p fds -> RecordsSet rt -> IO ()
 test_put_debug l rs =
   do conn <- db_connect
-     put conn l rs True
+     put_wif conn l rs
 
 test_put :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
   Lens ts rt p fds -> RecordsSet rt -> IO ()
 test_put l rs =
   do conn <- db_connect
-     put conn l rs False
+     put conn l rs
 
 -- Bohanonn et al. PODS 2016 examples
 

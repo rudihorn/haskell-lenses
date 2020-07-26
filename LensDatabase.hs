@@ -12,13 +12,13 @@ import qualified Data.Map.Strict as Map
 
 import Lens (Lens)
 import Tables (RecoverTables)
-import RowType (Env, Row, RecoverEnv)
+import Lens.Record.Base (Env, Row, RecoverEnv)
 
-import qualified Types
-import qualified DynamicPredicate as DP
+import qualified Lens.Types as T
+import qualified Lens.Predicate.Dynamic as DP
 
 type Tables = [String]
-type Columns = Map.Map String ([String], Types.Type)
+type Columns = Map.Map String ([String], T.Type)
 type LensQueryable t r p = (RecoverTables t, RecoverEnv r)
 
 class LensDatabase c where
@@ -34,3 +34,8 @@ class LensQuery c where
 query_ex' :: forall c rt. (RecoverEnv rt, LensQuery c, FromRow (Row rt)) =>
   c -> Tables -> Columns -> DP.Phrase -> IO [Row rt]
 query_ex' c t cols_map p = query_ex @c @rt Proxy c t cols_map p
+
+type LensGet t rt p fds c = (LensQueryable t rt p, FromRow (Row rt), LensQuery c)
+
+get :: forall t rt p fds c. LensGet t rt p fds c => c -> Lens t rt p fds -> IO [Row rt]
+get c l = query c l

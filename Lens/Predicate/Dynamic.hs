@@ -4,7 +4,7 @@
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
              TypeApplications, OverloadedStrings #-}
 
-module DynamicPredicate where
+module Lens.Predicate.Dynamic where
 
 import Data.Type.Set
 import GHC.TypeLits
@@ -14,8 +14,8 @@ import Data.Text.Buildable(Buildable)
 
 import Common
 
-import qualified Predicate as P
-import qualified QueryPrecedence as QP
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Predicate.Precedence as QP
 
 data Value where
   Bool :: Bool -> Value

@@ -4,7 +4,7 @@
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
              AllowAmbiguousTypes, TypeApplications, RankNTypes, QuantifiedConstraints #-}
 
-module RowType where
+module Lens.Record.Base where
 
 import Data.List
 import Data.Type.Bool
@@ -18,20 +18,19 @@ import Label
 import Database.PostgreSQL.Simple.FromRow
 import Database.PostgreSQL.Simple.Types(Only(..))
 
-import qualified Types
+import qualified Lens.Types as T
 import qualified Value
-import qualified Types as T
 
 type Env = [(Symbol, *)]
 
 class RecoverEnv e where
-  recover_env :: Proxy e -> [(String, Types.Type)]
+  recover_env :: Proxy e -> [(String, T.Type)]
 
 instance RecoverEnv '[] where
   recover_env Proxy = []
 
-instance (KnownSymbol k, Recoverable v Types.Type, RecoverEnv xs) => RecoverEnv ('(k,v) ': xs) where
-  recover_env Proxy = (symbolVal (Proxy :: Proxy k), Types.recover_type (Proxy :: Proxy v)) : recover_env (Proxy :: Proxy xs)
+instance (KnownSymbol k, Recoverable v T.Type, RecoverEnv xs) => RecoverEnv ('(k,v) ': xs) where
+  recover_env Proxy = (symbolVal (Proxy :: Proxy k), T.recover_type (Proxy :: Proxy v)) : recover_env (Proxy :: Proxy xs)
 
 type family VarsEnv (env :: Env) :: [Symbol] where
   VarsEnv '[] = '[]
@@ -70,7 +69,7 @@ data Row (e :: Env) where
 
 -- Make
 
-data ValueList (t :: [Types.Type]) where
+data ValueList (t :: [T.Type]) where
   EmptyV :: ValueList '[]
   ConsV :: Value.Value typ -> ValueList env -> ValueList (typ ': env)
 
@@ -80,7 +79,7 @@ class Fields (e :: Env) where
   fields :: Row e -> [String]
 
 instance Fields '[] where
-  fields RowType.Empty = []
+  fields Empty = []
 
 instance (KnownSymbol k, Show t, Fields xs) => Fields ( '(k, t) ': xs) where
   fields (Cons v r) = (symbolVal (Proxy :: Proxy k) ++ " = " ++ show v) : fields r
@@ -188,7 +187,7 @@ class Project (s :: [Symbol]) (e :: Env) where
   project :: Row e -> Row (ProjectEnv s e)
 
 instance Project '[] env where
-  project _ = RowType.Empty
+  project _ = Empty
 
 instance (Project xs env, Fetchable x env t evid) => Project (x ': xs) (env) where
   project r = Cons (fetch @x r) (project @xs @env r)
@@ -234,19 +233,19 @@ append (Cons v rt) rt' = Cons v (append rt  rt')
 
 
 row1 :: Row '[ '( "A", Int), '("B", String)]
-row1 = Cons 5 $ Cons "h" RowType.Empty
+row1 = Cons 5 $ Cons "h" Empty
 
 row2 :: Row '[ '("B", String)]
-row2 = Cons "h" RowType.Empty
+row2 = Cons "h" Empty
 
 row3 :: Row '[ '( "A", Int), '("C", Bool), '("B", String)]
-row3 = Cons 5 $ Cons True $ Cons "h" RowType.Empty
+row3 = Cons 5 $ Cons True $ Cons "h" Empty
 
 
 -- FetchRow
 
 instance FromRow (Row '[]) where
-  fromRow = return RowType.Empty
+  fromRow = return Empty
 
 instance (Ord t, Fld.FromField t, FromRow (Row xs)) => FromRow (Row ('(k, t) ': xs)) where
   fromRow = Cons <$> field <*> fromRow @(Row xs)
@@ -254,7 +253,7 @@ instance (Ord t, Fld.FromField t, FromRow (Row xs)) => FromRow (Row ('(k, t) ': 
 
 -- Equal
 comp :: Row e -> Row e -> Ordering
-comp Empty RowType.Empty = EQ
+comp Empty Empty = EQ
 comp (Cons v vs) (Cons v' vs') = compare v v' <> comp vs vs'
 
 eq :: Row e -> Row e -> Bool

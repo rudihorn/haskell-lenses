@@ -1,7 +1,7 @@
 
-module QueryPrecedence where
+module Lens.Predicate.Precedence where
 
-import qualified Predicate as P
+import qualified Lens.Predicate.Base as P
 
 data Op = Or | And | Cmp | Not | Add | Sub | Mult | Divide deriving (Eq, Ord)
 

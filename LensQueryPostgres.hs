@@ -4,6 +4,12 @@
 
 module LensQueryPostgres (PostgresDatabase, query) where
 
+import Data.Either (fromRight)
+import Data.Text.Format (build, Only(..))
+import Data.Text.Lazy.Builder (Builder, toLazyText)
+import Data.ByteString.UTF8 as BLU
+import Data.ByteString.Lazy as BL
+import Data.Text.Lazy.Encoding as TLE
 import Data.Type.Set (Proxy(..))
 
 import Database.PostgreSQL.Simple(
@@ -12,18 +18,14 @@ import Database.PostgreSQL.Simple(
 import Database.PostgreSQL.Simple.Types(Query(..), fromQuery)
 import Database.PostgreSQL.Simple.Internal(
   escapeIdentifier, escapeStringConn)
-import Database.PostgreSQL.Simple.FromRow
-import Lens
-import LensQuery
-import LensDatabase
-import DynamicPredicate as DP
-import RowType
-import Data.Either
-import Data.Text.Format
-import Data.Text.Lazy.Builder (Builder, toLazyText)
-import Data.ByteString.UTF8 as BLU
-import Data.ByteString.Lazy as BL
-import Data.Text.Lazy.Encoding as TLE
+import Database.PostgreSQL.Simple.FromRow (FromRow)
+
+import Lens.Record.Base (recover_env)
+import Lens (FromRowHack(..), lensToFromRowHack)
+import LensQuery (build_query, build_query_ex)
+import LensDatabase (LensDatabase(..), LensQuery(..))
+
+import Lens.Predicate.Dynamic as DP
 
 type PostgresDatabase = Connection
 

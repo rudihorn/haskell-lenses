@@ -5,20 +5,19 @@
              TypeApplications, AllowAmbiguousTypes, OverloadedLabels #-}
 
 
-module HybridPredicate where
+module Lens.Predicate.Hybrid where
 
-import Common
 import Data.Type.Set
 import GHC.TypeLits
 import GHC.OverloadedLabels (IsLabel(..))
-import RowType
-import qualified Types as T
-import Predicate
-import qualified DynamicPredicate as DP
-import qualified Predicate as P
-import qualified QueryPrecedence as QP
-import Data.Text.Internal.Builder
 import System.IO.Unsafe
+
+import Common
+import Lens.Predicate.Base
+
+import qualified Lens.Predicate.Dynamic as DP
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Predicate.Precedence as QP
 
 type DPhrase = DP.Phrase
 

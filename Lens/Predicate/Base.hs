@@ -4,19 +4,18 @@
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
              AllowAmbiguousTypes, TypeApplications #-}
 
-module Predicate where
+module Lens.Predicate.Base where
 
 import GHC.TypeLits
 import Data.Type.Bool
 import Data.Type.Set
 
 import Common
-import RowType (Env, Row, VarsEnv)
+import Lens.Record.Base (Env, Row, VarsEnv)
 import Label
 
-import qualified Types as T
-import qualified RowType as RT
-import qualified Value as V
+import qualified Lens.Types as T
+import qualified Lens.Record.Base as RT
 
 data UnaryOperator where
   Negate :: UnaryOperator

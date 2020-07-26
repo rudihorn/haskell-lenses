@@ -7,26 +7,29 @@
 module LensQuery where
 
 import qualified Data.Set as Set
-
-import Common
-import Affected (ToDynamic, toDPList, toDynamic)
 import qualified Data.Map.Strict as Map
+
+import Control.Monad.State.Lazy
 import Data.Type.Set
 import Data.Maybe
-import Lens
-import Types
-import Tables
-import RowType
-import qualified Predicate as P
-import qualified DynamicPredicate as DP
-import HybridPredicate
+import Data.Text.Buildable(Buildable)
 import Data.Text.Format
 import Data.Text.Lazy.Builder
-import qualified QueryPrecedence as QP
-import Data.Text.Buildable(Buildable)
-import Control.Monad.State.Lazy
+
+import Common
+import Lens (Lens(..))
+import Lens.FunDep.Affected (ToDynamic, toDPList, toDynamic)
+import Lens.Predicate.Hybrid (HPhrase(..))
+import Tables (RecoverTables, recover_tables)
+import Lens.Record.Base (Row, VarsEnv, RecoverEnv, recover_env)
 import LensDatabase (LensQueryable, LensDatabase(..), Columns)
-import SortedRecords (RecordsSet)
+import Lens.Record.Sorted (RecordsSet)
+import Lens.Helpers.Format(build_sep_comma, build_sep_space)
+
+import qualified Lens.Types as T
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Predicate.Dynamic as DP
+import qualified Lens.Predicate.Precedence as QP
 
 type ColumnsOpt = Map.Map String (String, String)
 
@@ -76,13 +79,6 @@ gr_priority pr npr bld
   | compare npr pr == GT = bld
   | otherwise = build "({})" $ Only $ bld
 
-build_sep :: (Buildable sep, Buildable a) => sep -> [a] -> Builder
-build_sep _ [] = build "" ()
-build_sep _ [x] = build "{}" (Only x)
-build_sep sep (x : xs) = build "{}{}{}" (x, sep, build_sep sep xs)
-
-build_sep_str :: Buildable a => String -> [a] -> Builder
-build_sep_str sep xs = build_sep sep xs
 
 print_value :: LensDatabase db => db -> DP.Value -> IO Builder
 print_value db (DP.Bool False) = return $ build "FALSE" ()
@@ -96,7 +92,7 @@ print_col db tbl col =
      ecol <- escapeId db col
      return $ if tbl == "" then ecol else build "{}.{}" (etbl, ecol)
 
-print_col_t :: LensDatabase db => db -> String -> ([String], Types.Type) -> IO Builder
+print_col_t :: LensDatabase db => db -> String -> ([String], T.Type) -> IO Builder
 print_col_t db v (table,_) =
   print_col db (head table) v
 
@@ -118,15 +114,15 @@ print_query db _ (P.In _ []) _ =
 print_query db cols (P.In cs vals) pr =
   do vals <- mapM (build_vals) vals
      pcs <- mapM (\v -> print_query db cols (P.Var v) pr) cs
-     return $ build "({}) IN ({})" (build_sep_str ", " pcs, build_sep_str ", " $ vals) where
+     return $ build "({}) IN ({})" (build_sep_comma pcs, build_sep_comma vals) where
   build_vals vs =
     do vals <- mapM (print_value db) vs
-       return $ build "({})" $ Only $ build_sep_str ", " $ vals
+       return $ build "({})" $ Only $ build_sep_comma vals
 print_query db cols (P.Case inp cases other) _ =
   do inp <- build_inp inp
      cases <- mapM build_case cases
      other <- print_query db cols other QP.first
-     return $ build "CASE {}{} ELSE {} END" (inp, build_sep_str " " $ cases, other) where
+     return $ build "CASE {}{} ELSE {} END" (inp, build_sep_space cases, other) where
   build_inp Nothing = return $ build "" ()
   build_inp (Just x) = build "({}) " <$> Only <$> print_query db cols x QP.first
   build_case (key, val) =
@@ -162,9 +158,9 @@ build_query_ex db tbls cols cols_map p =
   build_group (x : y : xs) = P.InfixAppl P.Equal (P.Var x) (P.Var y) : build_group (y : xs)
   build_group _ = []
   build_groups = DP.conjunction $ map DP.conjunction $ map build_group grps
-  cols_bld = build_sep_str ", " <$> (mapM (\k -> print_col_t db k $ fromJust $ Map.lookup k cols_map) $ cols)
+  cols_bld = build_sep_comma <$> (mapM (\k -> print_col_t db k $ fromJust $ Map.lookup k cols_map) $ cols)
   pred_bld = print_query db cols' (DP.conjunction [build_groups, p]) QP.first
-  tbls_bld = build_sep_str ", " <$> (mapM (\x -> build "{}" <$> Only <$> (escapeId db x)) tbls)
+  tbls_bld = build_sep_comma <$> (mapM (\x -> build "{}" <$> Only <$> (escapeId db x)) tbls)
 
 build_query :: LensQueryable t r p =>
   LensDatabase db => db -> Lens t r p fds -> IO Builder
@@ -179,10 +175,10 @@ build_insert_ex :: forall db.
   (LensDatabase db) => db -> String -> [String] -> [[DP.Value]] -> IO Builder
 build_insert_ex db tbl cols vals =
   do etbl <- escapeId db tbl
-     colstr <- build_sep_str ", " <$> mapM (escapeId db) cols
-     valstr <- build_sep_str ", " <$> mapM build_record vals
+     colstr <- build_sep_comma <$> mapM (escapeId db) cols
+     valstr <- build_sep_comma <$> mapM build_record vals
      return $ build "INSERT INTO {} ({}) VALUES {}" (etbl, colstr, valstr) where
-  build_record rs = build "({})" <$> Only <$> build_sep_str ", " <$> mapM (print_value db) rs
+  build_record rs = build "({})" <$> Only <$> build_sep_comma <$> mapM (print_value db) rs
 
 build_insert ::
   forall db rt. (ToDynamic rt, Recoverable (VarsEnv rt) [String], LensDatabase db) =>
@@ -210,7 +206,7 @@ build_update_ex :: forall db. LensDatabase db =>
   db -> String -> [(String, DP.Value)] -> [(String, DP.Value)] -> IO Builder
 build_update_ex db tbl match update =
   do etbl <- escapeId db tbl
-     eset <- build_sep_str ", " <$> mapM fset update
+     eset <- build_sep_comma <$> mapM fset update
      ewher <- print_query db colsOpt pred QP.first
      return $ build "UPDATE {} SET {} WHERE {}" (etbl, eset, ewher) where
   colsOpt = Map.fromList $ map (\(k,_) -> (k,(k,""))) match

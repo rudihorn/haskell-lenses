@@ -3,7 +3,7 @@
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving #-}
 
-module Types where
+module Lens.Types where
 
 import Common
 import Data.Type.Set

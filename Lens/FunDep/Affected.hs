@@ -4,20 +4,20 @@
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
              AllowAmbiguousTypes, TypeApplications #-}
 
-module Affected where
+module Lens.FunDep.Affected where
 
 import Data.Type.Set (Proxy(..))
 import qualified Data.Set as Set
 
 import Common
-import DynamicPredicate (DPhrase, BoxValue, box)
+import Lens.Predicate.Dynamic (DPhrase, BoxValue, box)
 import FunDep (FunDep(..), Left)
-import RowType (Env)
-import SortedRecords (project, RecordsSet)
+import Lens.Record.Base (Env)
+import Lens.Record.Sorted (project, RecordsSet)
 
-import qualified DynamicPredicate as DP
-import qualified Predicate as P
-import qualified RowType as R
+import qualified Lens.Predicate.Dynamic as DP
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Record.Base as R
 import qualified Value as V
 
 class ToDynamic rt where
@@ -31,7 +31,6 @@ instance (BoxValue t, ToDynamic xs) => ToDynamic ('(k, t) ': xs) where
 
 toDPList :: ToDynamic rt => [R.Row rt] -> [[DP.Value]]
 toDPList = map toDynamic
-
 
 class Affected (fds :: [FunDep]) (rt :: Env) where
   affected :: RecordsSet rt -> DPhrase

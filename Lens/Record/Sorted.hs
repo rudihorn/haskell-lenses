@@ -2,7 +2,7 @@
              FlexibleContexts, ConstraintKinds, UndecidableInstances,
              MultiParamTypeClasses, RankNTypes #-}
 
-module SortedRecords where
+module Lens.Record.Sorted where
 
 import Data.Map.Strict ((!?))
 import Data.Set (Set, toList)
@@ -11,16 +11,16 @@ import Data.Type.Set ((:++))
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 
-import CompilePredicate (LookupMap, compile)
+import Lens.Predicate.Compile (LookupMap, compile)
 import Delta (Delta)
-import DynamicPredicate (DPhrase)
+import Lens.Predicate.Dynamic (DPhrase)
 import Label (IsSubset, AdjustOrder)
 import FunDep (FunDep, Left, Right)
-import RowType (append, Env, Row, Project, ProjectEnv, RemoveInterEnv, JoinEnv, VarsEnv, ToRow, toRow)
+import Lens.Record.Base (append, Env, Row, Project, ProjectEnv, RemoveInterEnv, JoinEnv, VarsEnv, ToRow, toRow)
 
-import qualified DynamicPredicate as DP
+import qualified Lens.Predicate.Dynamic as DP
 import qualified Label as L
-import qualified RowType as R
+import qualified Lens.Record.Base as R
 
 type RecordsSet rt = Set (Row rt)
 type RecordsDelta rt = Delta (Row rt)

@@ -11,25 +11,24 @@ import Data.Type.Set ((:++), Proxy(..))
 import Database.PostgreSQL.Simple.FromRow
 
 import Common
-import Affected (Affected, ToDynamic)
-import CompilePredicate (LookupMap)
---import FunDep (DropColumn, FunDep, InTreeForm, SplitFDs, Outputs)
+import Lens.FunDep.Affected (Affected, ToDynamic)
+import Lens.Predicate.Compile (LookupMap)
 import FunDep
-import HybridPredicate -- (HPhrase)
+import Lens.Predicate.Hybrid -- (HPhrase)
 import Label (NoDuplicates, IsDisjoint, Subset, Subtract, SymAsSet)
-import Predicate ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
-                  HasCols, LJDI, ReplacePredicate, Simplify,
-                  SPhrase, TypesBool, Vars)
-import RowType (Env, Project, ProjectEnv, JoinEnv, RecoverEnv,
-                RemoveEnv, OverlappingJoin, VarsEnv)
-import SortedRecords (Revisable, RevisableFd, RecordsSet, rows)
+import Lens.Predicate.Base ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
+                            HasCols, LJDI, ReplacePredicate, Simplify,
+                            SPhrase, TypesBool, Vars)
+import Lens.Record.Base (Env, Project, ProjectEnv, JoinEnv, RecoverEnv,
+                         RemoveEnv, OverlappingJoin, VarsEnv)
+import Lens.Record.Sorted (Revisable, RevisableFd, RecordsSet, rows)
 import Tables (DisjointTables, RecoverTables, Tables)
 
-import qualified DynamicPredicate as DP
-import qualified Types as T
-import qualified Predicate as P
-import qualified RowType as R
-import qualified SortedRecords as RT
+import qualified Lens.Predicate.Dynamic as DP
+import qualified Lens.Types as T
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Record.Base as R
+import qualified Lens.Record.Sorted as RT
 
 
 type family IsIgnoresOutputs (phrase :: SPhrase) (fds :: [FunDep]) :: Bool where

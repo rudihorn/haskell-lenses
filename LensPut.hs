@@ -6,32 +6,32 @@ module LensPut where
 
 import Data.Type.Set (Proxy(..), (:++))
 import Data.ByteString.Builder(toLazyByteString)
+import Database.PostgreSQL.Simple.FromRow (FromRow(..))
 
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 import Common
-import Affected (Affected, affected, toDPList, ToDynamic)
+import Lens.FunDep.Affected (Affected, affected, toDPList, ToDynamic)
 import Delta (positive, negative, Delta, delta_union, (#-), (#+))
-import DynamicPredicate (DPhrase)
+import Lens.Predicate.Dynamic (DPhrase)
+import Lens.Predicate.Hybrid (HPhrase(..))
 import FunDep
 -- import FunDep (FunDep(..), Left, Right, TopologicalSort)
-import HybridPredicate (HPhrase(..))
 import Label (IsSubset, AdjustOrder, Subtract)
 import Lens (Droppable, Lens(..), TableKey)
 import LensDatabase (LensDatabase(..), LensQuery, Columns, query, query_ex, execute)
 import LensQuery (build_delete, build_insert, build_update, column_map, query_predicate)
-import RowType (Env, InterCols, Project, ProjectEnv, VarsEnv)
-import SortedRecords (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
+import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
+import Lens.Record.Sorted (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
 import Tables (RecoverTables, recover_tables)
-import Database.PostgreSQL.Simple.FromRow
 
 import qualified Delta
-import qualified DynamicPredicate as DP
-import qualified Predicate as P
-import qualified RowType as R
-import qualified SortedRecords as SR
+import qualified Lens.Predicate.Dynamic as DP
+import qualified Lens.Predicate.Base as P
+import qualified Lens.Record.Base as R
+import qualified Lens.Record.Sorted as SR
 import qualified Value
 
 -- Conversion from sorted records to dynamic phrase values
@@ -131,10 +131,18 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
          (toDPList $ Set.toList $ project @(InterCols rt1 rt2) (delta_union delta)),
        query_predicate l]
 
+type LensPut ts rt p fds c =
+  (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c, FromRow (R.Row rt))
 
-put :: forall c ts rt p fds.
-  (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c, FromRow (R.Row rt)) =>
-  c -> (Lens ts rt p fds) -> RecordsSet rt -> Bool -> IO ()
-put c l rs wif =
+put :: forall c ts rt p fds. LensPut ts rt p fds c =>
+  c -> (Lens ts rt p fds) -> RecordsSet rt -> IO ()
+put c l rs =
   do unchanged <- query c l
-     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) wif
+     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) False
+
+put_wif :: forall c ts rt p fds. LensPut ts rt p fds c =>
+  c -> (Lens ts rt p fds) -> RecordsSet rt -> IO ()
+put_wif c l rs =
+  do unchanged <- query c l
+     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) True
+

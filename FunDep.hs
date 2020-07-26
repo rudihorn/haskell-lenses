@@ -2,20 +2,22 @@
              MultiParamTypeClasses, FlexibleInstances, PolyKinds,
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
-             ConstraintKinds #-}
+             ConstraintKinds, TypeApplications #-}
 
 module FunDep where
 
 import Common
 import GHC.TypeLits
-import GHC.TypeNats
 import Data.Type.Bool
 import Data.Type.Set
-import Data.Kind
 import Label
 
 data FunDep where
   FunDep :: [Symbol] -> [Symbol] -> FunDep
+
+instance (Recoverable l [String], Recoverable r [String]) =>
+  Recoverable ('FunDep l r) ([String], [String]) where
+  recover Proxy = (recover @l Proxy, recover @l Proxy)
 
 type family (-->) (left :: [Symbol]) (right :: [Symbol]) :: FunDep where
   xs --> ys = ('FunDep (SymAsSet xs) (SymAsSet ys) :: FunDep)

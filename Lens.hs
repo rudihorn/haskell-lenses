@@ -53,6 +53,7 @@ type LensCommon ts rt p fds =
    RecoverTables ts,
    RecoverEnv rt,
    Recoverable (VarsEnv rt) [String],
+   Recoverable fds [([String], [String])],
    LookupMap rt,
    FromRow (R.Row rt),
    ToDynamic rt,

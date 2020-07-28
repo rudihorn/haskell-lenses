@@ -10,7 +10,7 @@ import Database.PostgreSQL.Simple.FromRow (FromRow(..))
 
 import qualified Data.Map.Strict as Map
 
-import Lens (Lens)
+import Lens (Lens, Ts, Rt)
 import Tables (RecoverTables)
 import Lens.Record.Base (Env, Row, RecoverEnv)
 
@@ -19,15 +19,15 @@ import qualified Lens.Predicate.Dynamic as DP
 
 type Tables = [String]
 type Columns = Map.Map String ([String], T.Type)
-type LensQueryable t r p = (RecoverTables t, RecoverEnv r)
+type LensQueryable s = (RecoverTables (Ts s), RecoverEnv (Rt s))
 
 class LensDatabase c where
   escapeId :: c -> String -> IO Builder
   escapeStr :: c -> String -> IO Builder
 
 class LensQuery c where
-  query :: forall t rt p fds. (LensQueryable t rt p, FromRow (Row rt)) =>
-    c -> Lens t rt p fds -> IO [Row rt]
+  query :: forall s rt. (LensQueryable s, rt ~ Rt s, FromRow (Row rt)) =>
+    c -> Lens s -> IO [Row rt]
   query_ex :: (FromRow (Row rt), RecoverEnv rt) => Proxy rt -> c -> Tables -> Columns -> DP.Phrase -> IO [Row rt]
   execute :: c -> Builder -> IO ()
 
@@ -35,7 +35,7 @@ query_ex' :: forall c rt. (RecoverEnv rt, LensQuery c, FromRow (Row rt)) =>
   c -> Tables -> Columns -> DP.Phrase -> IO [Row rt]
 query_ex' c t cols_map p = query_ex @c @rt Proxy c t cols_map p
 
-type LensGet t rt p fds c = (LensQueryable t rt p, FromRow (Row rt), LensQuery c)
+type LensGet s c = (LensQueryable s, FromRow (Row (Rt s)), LensQuery c)
 
-get :: forall t rt p fds c. LensGet t rt p fds c => c -> Lens t rt p fds -> IO [Row rt]
+get :: forall s c. LensGet s c => c -> Lens s -> IO [Row (Rt s)]
 get c l = query c l

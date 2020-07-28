@@ -17,7 +17,7 @@ import Data.Text.Format
 import Data.Text.Lazy.Builder
 
 import Common
-import Lens (Lens(..))
+import Lens (Lens(..), Ts, Rt)
 import Lens.FunDep.Affected (ToDynamic, toDPList, toDynamic)
 import Lens.Predicate.Hybrid (HPhrase(..))
 import Tables (RecoverTables, recover_tables)
@@ -36,11 +36,11 @@ type ColumnsOpt = Map.Map String (String, String)
 class ColumnMap a where
   column_map :: a -> Columns
 
-instance (RecoverTables t, RecoverEnv r) => ColumnMap (Lens t r p fds) where
+instance (RecoverTables (Ts s), RecoverEnv (Rt s)) => ColumnMap (Lens s) where
   column_map (Prim) = Map.fromList $ map f env where
-    env = recover_env (Proxy :: Proxy r)
+    env = recover_env @(Rt s) Proxy
     f (col, typ) = (col, ([table_name], typ))
-    table_name = head $ recover_tables (Proxy :: Proxy t)
+    table_name = head $ recover_tables @(Ts s) Proxy
   column_map (Debug l) = column_map l
   column_map (Select _ l) = column_map l
   column_map (Drop Proxy Proxy l) = column_map l
@@ -50,7 +50,7 @@ instance (RecoverTables t, RecoverEnv r) => ColumnMap (Lens t r p fds) where
 class QueryPredicate a where
   query_predicate :: a -> DP.Phrase
 
-instance QueryPredicate (Lens t r p fds) where
+instance QueryPredicate (Lens s) where
   query_predicate Prim = P.Constant (DP.Bool True)
   query_predicate (Debug l) = query_predicate l
   query_predicate (Drop Proxy Proxy l) = query_predicate l
@@ -162,13 +162,13 @@ build_query_ex db tbls cols cols_map p =
   pred_bld = print_query db cols' (DP.conjunction [build_groups, p]) QP.first
   tbls_bld = build_sep_comma <$> (mapM (\x -> build "{}" <$> Only <$> (escapeId db x)) tbls)
 
-build_query :: LensQueryable t r p =>
-  LensDatabase db => db -> Lens t r p fds -> IO Builder
-build_query db (l :: Lens t r p fds) = build_query_ex db tbls cols cols_map p where
+build_query :: LensQueryable s =>
+  LensDatabase db => db -> Lens s -> IO Builder
+build_query db (l :: Lens s) = build_query_ex db tbls cols cols_map p where
   p = query_predicate l
-  cols = map fst $ recover_env @r Proxy
+  cols = map fst $ recover_env @(Rt s) Proxy
   cols_map = column_map l
-  tbls = recover_tables (Proxy :: Proxy t)
+  tbls = recover_tables @(Ts s) Proxy
 
 
 build_insert_ex :: forall db.

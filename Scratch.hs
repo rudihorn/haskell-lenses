@@ -33,21 +33,20 @@ db_connect = connect defaultConnectInfo {
     connectPassword = "links"
   }
 
-test_get :: (Fields r, LensGet t r p fds PostgresDatabase) => Lens t r p fds -> IO [Row r]
-test_get (l :: Lens t r p fds) = do
+test_get :: (LensGet s PostgresDatabase) => Lens s -> IO [QueryRow s]
+test_get (l :: Lens s) = do
   conn <- db_connect
   res <- get conn l
   -- mapM_ Prelude.print res
   return res
 
-test_put_debug :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
-  Lens ts rt p fds -> RecordsSet rt -> IO ()
+test_put_debug :: LensPut PostgresDatabase s =>
+  Lens s -> RecordsSet (Rt s) -> IO ()
 test_put_debug l rs =
   do conn <- db_connect
      put_wif conn l rs
 
-test_put :: (RecoverTables ts, RecoverEnv rt, FromRow (Row rt)) =>
-  Lens ts rt p fds -> RecordsSet rt -> IO ()
+test_put :: LensPut PostgresDatabase s => Lens s -> RecordsSet (Rt s) -> IO ()
 test_put l rs =
   do conn <- db_connect
      put conn l rs
@@ -113,10 +112,10 @@ my_hybrid_lenses b i s = do
   tracks2 = select pred tracks1
   tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2
 
-type Fds = '[ '["album"] --> '["quantity"],
+type FdsEx = '[ '["album"] --> '["quantity"],
               '["quantity"] --> '["date", "rating"]]
 
 affect = do
   res <- test_get tracks3
-  q <- DP.print $ affected @Fds $ fromList res
+  q <- DP.print $ affected @FdsEx $ fromList res
   return q

@@ -2,7 +2,7 @@
              MultiParamTypeClasses, FlexibleInstances, PolyKinds,
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
              ScopedTypeVariables, TypeInType, TypeOperators, StandaloneDeriving,
-             AllowAmbiguousTypes, TypeApplications #-}
+             AllowAmbiguousTypes, TypeApplications, QuantifiedConstraints, RankNTypes #-}
 
 module Lens where
 
@@ -20,7 +20,7 @@ import Lens.Predicate.Base ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
                             HasCols, LJDI, ReplacePredicate, Simplify,
                             SPhrase, TypesBool, Vars)
 import Lens.Record.Base (Env, Project, ProjectEnv, JoinEnv, RecoverEnv,
-                         RemoveEnv, OverlappingJoin, VarsEnv)
+                         RemoveEnv, OverlappingJoin, VarsEnv, Row)
 import Lens.Record.Sorted (Revisable, RevisableFd, RecordsSet, rows)
 import Tables (DisjointTables, RecoverTables, Tables)
 
@@ -47,7 +47,28 @@ type family TableKey (rt :: Env) (fds :: [FunDep]) :: [Symbol] where
 type family UpdateColumns (rt :: Env) (fds :: [FunDep]) :: [Symbol] where
   UpdateColumns rt fds = Subtract (VarsEnv rt) (TableKey rt fds)
 
-type LensCommon ts rt p fds =
+data Sort where
+  Sort :: Tables -> Env -> SPhrase -> [FunDep] -> Sort
+
+-- get tables
+type family Ts (s :: Sort) :: Tables where
+  Ts ('Sort ts _ _ _) = ts
+
+-- get row type
+type family Rt (s :: Sort) :: Env where
+  Rt ('Sort _ rt _ _) = rt
+
+-- get predicate
+type family P (s :: Sort) :: SPhrase where
+  P ('Sort _ _ p _) = p
+
+-- get fun deps
+type family Fds (s :: Sort) :: [FunDep] where
+  Fds ('Sort _ _ _ fds) = fds
+
+type QueryRow s = Row (Rt s)
+
+type LensCommonExp ts rt p fds =
   (Affected fds rt,
    Revisable (TopologicalSort fds) rt rt,
    RecoverTables ts,
@@ -58,13 +79,13 @@ type LensCommon ts rt p fds =
    LookupMap rt,
    FromRow (R.Row rt),
    ToDynamic rt,
-   NoDuplicates rt
-   )
+   NoDuplicates rt)
 
-type Lensable ts rt p fds fdsnew =
-  (fdsnew ~ SplitFDs fds,
-   p ~ DefaultPredicate,
-   LensCommon ts rt p fdsnew,
+type LensCommon s =
+  (LensCommonExp (Ts s) (Rt s) (P s) (Fds s))
+
+type LensableExp ts rt p fds fdsnew =
+  (p ~ DefaultPredicate,
    Project (TableKey rt fdsnew) rt,
    ToDynamic (ProjectEnv (TableKey rt fdsnew) rt),
    Recoverable (VarsEnv (ProjectEnv (TableKey rt fdsnew) rt)) [String],
@@ -72,9 +93,15 @@ type Lensable ts rt p fds fdsnew =
    ToDynamic (ProjectEnv (UpdateColumns rt fdsnew) rt),
    Recoverable (VarsEnv (ProjectEnv (UpdateColumns rt fdsnew) rt)) [String])
 
+type Lensable s snew =
+  (LensableExp (Ts s) (Rt s) (P s) (Fds s) (Fds snew),
+   snew ~ 'Sort (Ts s) (Rt s) (P s) (SplitFDs (Fds s)),
+   LensCommon s,
+   LensCommon snew)
+
 type JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
-  (LensCommon ts1 rt1 p1 fds1,
-   LensCommon ts2 rt2 p2 fds2,
+  (LensCommon ('Sort ts1 rt1 p1 fds1),
+   LensCommon ('Sort ts2 rt2 p2 fds2),
    R.Fields rtnew,
    FromRow (R.Row rtnew),
    ProjectEnv (VarsEnv rt1) rtnew ~ rt1,
@@ -88,7 +115,7 @@ type JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
    ToDynamic (ProjectEnv joincols rt2),
    RT.Joinable rt1 rt2 rtnew)
 
-type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
+type JoinableExp ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
   (rtnew ~ JoinEnv rt1 rt2,
    joincols ~ R.InterCols rt1 rt2,
    DisjointTables ts1 ts2,
@@ -98,17 +125,25 @@ type Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
    InTreeForm fds1, InTreeForm fds2,
    JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols)
 
+type Joinable s1 s2 snew joincols =
+  (JoinableExp (Ts s1) (Rt s1) (P s1) (Fds s1) (Ts s2) (Rt s2) (P s2) (Fds s2) (Rt snew) joincols,
+   snew ~ 'Sort (Ts s1 :++ Ts s2) (JoinEnv (Rt s1) (Rt s2))
+                (Simplify (P s1 :& P s2)) (SplitFDs (Fds s1 :++ Fds s2)))
+
 type SelectImplConstraints rt p pred fds =
   (Affected fds rt, LookupMap rt, Revisable (TopologicalSort fds) rt rt,
    FromRow (R.Row rt),
    R.Fields rt)
 
-type Selectable rt p pred fds pnew =
-  (pnew ~ Simplify (p :& pred),
-   TypesBool rt p,
+type SelectableExp p rt pred fds =
+  (TypesBool rt p,
    IgnoresOutputs pred fds,
    InTreeForm fds,
    SelectImplConstraints rt p pred fds)
+
+type Selectable p s snew =
+  (snew ~ 'Sort (Ts s) (Rt s) (Simplify (p :& (P s))) (Fds s),
+   SelectableExp p (Rt s) (P s) (Fds s))
 
 type DropImplConstraints env key rt pred fds rtnew =
   (RT.Joinable rtnew (EvalRowType env) rt, R.Fields rt, R.Fields rtnew,
@@ -121,69 +156,75 @@ type DropImplConstraints env key rt pred fds rtnew =
    FromRow (R.Row (ProjectEnv (key :++ P.Vars env) rt)),
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 
-type Droppable env key rt pred fds rtnew prednew fdsnew =
-  (rtnew ~ RemoveEnv (Vars env) rt,
-   prednew ~ Simplify (ReplacePredicate env pred),
-   fdsnew ~ DropColumn (Vars env) fds,
-   HasCols env rt, LJDI (Vars env) pred, DefVI env pred,
+type DroppableExp env key rt pred fds rtnew =
+  (HasCols env rt, LJDI (Vars env) pred, DefVI env pred,
    DropImplConstraints env key rt pred fds rtnew)
+
+type Droppable env key s snew =
+  (snew ~ 'Sort (Ts s) (RemoveEnv (Vars env) (Rt s))
+                (Simplify (ReplacePredicate env (P s)))
+                (DropColumn (Vars env) (Fds s)),
+   DroppableExp env key (Rt s) (P s) (Fds s) (Rt snew))
 
 type Debuggable rt =
   (R.Fields rt)
 
-data Lens (tables :: Tables) (rt :: Env) (p :: SPhrase) (fds :: [FunDep]) where
-  Prim :: Lensable '[table] rt p fds fdsnew => Lens '[table] rt p fdsnew
-  Debug :: Debuggable rt => Lens ts rt p fds -> Lens ts rt p fds
-  Join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =>
-    Lens ts1 rt1 p1 fds1 ->
-    Lens ts2 rt2 p2 fds2 ->
-    Lens (ts1 :++ ts2) rtnew (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
-  Select :: Selectable rt p pred fds pnew =>
+data Lens (s :: Sort) where
+  Prim :: Lensable ('Sort '[table] rt p fds) snew => Lens snew
+  Debug :: Debuggable (Rt s) => Lens s -> Lens s
+  Join :: Joinable s1 s2 snew joincols =>
+    Lens s1 ->
+    Lens s2 ->
+    Lens snew
+  Select :: (Selectable p s snew) =>
     HPhrase p ->
-    Lens ts rt pred fds ->
-    Lens ts rt pnew fds
-  Drop ::
-    Droppable env (key :: [Symbol]) rt pred fds rtnew prednew fdsnew =>
+    Lens s ->
+    Lens snew
+  Drop :: Droppable env (key :: [Symbol]) s snew =>
     Proxy key ->
     Proxy env ->
-    Lens ts rt pred fds ->
-    Lens ts rtnew prednew fdsnew
+    Lens s ->
+    Lens snew
 
 type family RowType l :: Env where
-  RowType (Lens ts rt p fds) = rt
+  RowType (Lens s) = Rt s
 
 data FromRowHack (rt :: Env) where
   Hack :: FromRow (R.Row rt) => FromRowHack rt
 
-lrows :: (vars ~ R.TupleType rt, R.ToRow rt vars) =>
-  Lens ts rt p fds -> [vars] -> RecordsSet rt
-lrows (l :: Lens ts rt p fds) vars = rows @rt vars
+lrows :: (vars ~ R.TupleType (Rt s), R.ToRow (Rt s) vars) =>
+  Lens s -> [vars] -> RecordsSet (Rt s)
+lrows (l :: Lens s) vars = rows @(Rt s) vars
 
-lensToFromRowHack :: Lens ts rt p fds -> FromRowHack rt
+lensToFromRowHack :: Lens s -> FromRowHack (Rt s)
 lensToFromRowHack Prim = Hack
 lensToFromRowHack (Debug l) = lensToFromRowHack l
 lensToFromRowHack (Select _ _) = Hack
 lensToFromRowHack (Drop _ _ _) = Hack
 lensToFromRowHack (Join _ _) = Hack
 
-prim :: forall table rt fds p fdsnew. Lensable '[table] rt p fds fdsnew => Lens '[table] rt p fdsnew
-prim = Prim @table @rt @p @fds @fdsnew
+prim :: forall table rt fds p fdsnew s snew.
+  (s ~ 'Sort '[table] rt p fds,
+  Lensable s snew)
+  => Lens snew
+prim = Prim @table @rt @p @fds
 
-select :: forall p ts rt pred fds pnew. Selectable rt p pred fds pnew =>
-  HPhrase p -> Lens ts rt pred fds -> Lens ts rt (Simplify (p :& pred)) fds
-select pred l = Select @rt @p @pred @fds @pnew pred l
+select :: forall p s snew.
+  (Selectable p s snew) => HPhrase p -> Lens s -> Lens snew
+select pred l = Select pred l
 
-debug :: forall ts rt p fds. (R.Fields rt) => Lens ts rt p fds -> Lens ts rt p fds
+debug :: forall s. (R.Fields (Rt s)) => Lens s -> Lens s
 debug l = Debug l
 
-dropl :: forall env (key :: [Symbol]) rt pred ts fds rtnew prednew fdsnew. (Droppable env key rt pred fds rtnew prednew fdsnew, RecoverEnv rt ) =>
-  Lens ts rt pred fds -> Lens ts rtnew prednew fdsnew
-dropl l = Drop @env @key @rt @pred @fds @rtnew @prednew @fdsnew @ts Proxy Proxy l
+dropl :: forall env (key :: [Symbol]) s snew.
+  (Droppable env key s snew, RecoverEnv (Rt s)) =>
+  Lens s -> Lens snew
+dropl l = Drop @env @key @s @snew Proxy Proxy l
 
-join :: Joinable ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =>
-    Lens ts1 rt1 p1 fds1 ->
-    Lens ts2 rt2 p2 fds2 ->
-    Lens (ts1 :++ ts2) rtnew (Simplify (p1 :& p2)) (SplitFDs (fds1 :++ fds2))
+join :: Joinable s1 s2 snew joincols =>
+    Lens s1 ->
+    Lens s2 ->
+    Lens snew
 join l1 l2 = Join l1 l2
 
 lens1 = prim @"test1" @'[ '("A", Int), '("B", String)] @'[ '["A"] --> '["B"]]

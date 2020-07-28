@@ -23,7 +23,7 @@ import Data.Text.Buildable (Buildable(..))
 import Common
 import Lens.Helpers.Format (build_sep_comma)
 import Lens.Types (Type(..))
-import Lens (Lens(..))
+import Lens (Lens(..), Fds, Rt, Ts)
 import Lens.Record.Base (RecoverEnv(..))
 import Lens.Database.Base (LensQuery(..), LensDatabase(..))
 import Tables (recover_tables)
@@ -62,17 +62,17 @@ build_create_tbl_ifne db tbl =
         return $ F.build "PRIMARY KEY ({})" (Only $ build_sep_comma cols)
 
 {-| Create the database table if it does not exist. -}
-setup :: (LensQuery db, LensDatabase db) => db -> Lens ts rt p fds -> IO ()
-setup db (Prim :: Lens ts rt p fds) =
+setup :: (LensQuery db, LensDatabase db) => db -> Lens s -> IO ()
+setup db (Prim :: Lens s) =
   do bld <- build_create_tbl_ifne db $ Table name cols key
      execute db bld where
-  fds = recover @fds Proxy
+  fds = recover @(Fds s) Proxy
   key = do (left, right) <- Maybe.listToMaybe fds
            let cols = Set.union (Set.fromList left) (Set.fromList right)
            let coversAll = Set.isSubsetOf (Set.fromList colNames) cols
            if coversAll then Just left else Nothing
-  name = head $ recover_tables @ts Proxy
-  cols = map (\(n,t) -> Column n t) $ recover_env @rt Proxy
+  name = head $ recover_tables @(Ts s) Proxy
+  cols = map (\(n,t) -> Column n t) $ recover_env @(Rt s) Proxy
   colNames = map colName cols
 
 setup db (Debug l) = setup db l

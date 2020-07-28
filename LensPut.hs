@@ -119,8 +119,8 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
      put_delta c l2 delta_n' wif where
   delta_ol = project @(VarsEnv rt1) $ Delta.positive delta_o
   delta_or = project @(VarsEnv rt2) $ Delta.positive delta_o
-  pred_m = DP.conjunction [affected @fds1 delta_ol, query_predicate l1]
-  pred_n = DP.conjunction [affected @fds2 delta_or, query_predicate l2]
+  pred_m = DP.conjunction [or_key $ affected @fds1 delta_ol, query_predicate l1]
+  pred_n = DP.conjunction [or_key $ affected @fds2 delta_or, query_predicate l2]
   ts1 = recover_tables @ts1 Proxy
   ts2 = recover_tables @ts2 Proxy
   pjoin :: (Project (InterCols rt1 rt2) rtl, ToDynamic (ProjectEnv (InterCols rt1 rt2) rtl)) =>
@@ -130,6 +130,10 @@ put_delta c (Join (l1 :: Lens ts1 rt1 p1 fds1) (l2 :: Lens ts2 rt2 p2 fds2)) del
       [P.In (recover @(InterCols rt1 rt2) Proxy)
          (toDPList $ Set.toList $ project @(InterCols rt1 rt2) (delta_union delta)),
        query_predicate l]
+ -- workaround for weird affected behavior. When no FDS are available search for identical rows
+ -- this should probably search for all keys as well as functional dependencies
+  or_key (P.Constant (DP.Bool False)) = P.In (recover @(VarsEnv rt2) @[String] Proxy) (toDPList $ Set.toList $ delta_or)
+  or_key p = p
 
 type LensPut ts rt p fds c =
   (RecoverTables ts, R.RecoverEnv rt, LensQuery c, LensDatabase c, FromRow (R.Row rt))

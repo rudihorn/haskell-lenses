@@ -39,14 +39,14 @@ type Joinable rt rt' rt'' =
 
 join :: forall rt'' rt rt'. Joinable rt rt' rt'' => RecordsSet rt -> RecordsSet rt' -> RecordsSet rt''
 join rs ss = Set.fromList $ concat $ map f_entry $ Set.toList ss where
-  join_map = Map.fromList $ map join_entry $ Set.toList rs
+  join_map = Map.fromListWith (++) $ map join_entry $ Set.toList rs
   join_entry r =
     (R.project @(R.InterCols rt rt') r,
-     R.project @(VarsEnv (RemoveInterEnv rt rt')) r)
+     [R.project @(VarsEnv (RemoveInterEnv rt rt')) r])
   f_entry s =
     case join_map !? R.project @(R.InterCols rt rt') s of
     Nothing -> []
-    Just r -> [R.project @(R.VarsEnv rt'') (append r s)]
+    Just r -> map (\r -> R.project @(R.VarsEnv rt'') (append r s)) r
 
 project :: forall s rt. (Project s rt) => RecordsSet rt -> RecordsSet (ProjectEnv s rt)
 project rs = Set.map (R.project @s) rs

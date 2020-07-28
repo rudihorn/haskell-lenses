@@ -62,8 +62,8 @@ build_create_tbl_ifne db tbl =
         return $ F.build "PRIMARY KEY ({})" (Only $ build_sep_comma cols)
 
 {-| Create the database table if it does not exist. -}
-create_ifne :: (LensQuery db, LensDatabase db) => db -> Lens ts rt p fds -> IO ()
-create_ifne db (Prim :: Lens ts rt p fds) =
+setup :: (LensQuery db, LensDatabase db) => db -> Lens ts rt p fds -> IO ()
+setup db (Prim :: Lens ts rt p fds) =
   do bld <- build_create_tbl_ifne db $ Table name cols key
      execute db bld where
   fds = recover @fds Proxy
@@ -75,9 +75,9 @@ create_ifne db (Prim :: Lens ts rt p fds) =
   cols = map (\(n,t) -> Column n t) $ recover_env @rt Proxy
   colNames = map colName cols
 
-create_ifne db (Debug l) = create_ifne db l
-create_ifne db (Join l1 l2) =
-  do create_ifne db l1
-     create_ifne db l2
-create_ifne db (Select _ l) = create_ifne db l
-create_ifne db (Drop _ _ l) = create_ifne db l
+setup db (Debug l) = setup db l
+setup db (Join l1 l2) =
+  do setup db l1
+     setup db l2
+setup db (Select _ l) = setup db l
+setup db (Drop _ _ l) = setup db l

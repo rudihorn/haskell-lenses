@@ -54,6 +54,7 @@ type LensCommon ts rt p fds =
    RecoverEnv rt,
    Recoverable (VarsEnv rt) [String],
    Recoverable fds [([String], [String])],
+   R.Fields rt,
    LookupMap rt,
    FromRow (R.Row rt),
    ToDynamic rt,
@@ -74,6 +75,7 @@ type Lensable ts rt p fds fdsnew =
 type JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
   (LensCommon ts1 rt1 p1 fds1,
    LensCommon ts2 rt2 p2 fds2,
+   R.Fields rtnew,
    FromRow (R.Row rtnew),
    ProjectEnv (VarsEnv rt1) rtnew ~ rt1,
    ProjectEnv (VarsEnv rt2) rtnew ~ rt2,
@@ -109,7 +111,7 @@ type Selectable rt p pred fds pnew =
    SelectImplConstraints rt p pred fds)
 
 type DropImplConstraints env key rt pred fds rtnew =
-  (RT.Joinable rtnew (EvalRowType env) rt,
+  (RT.Joinable rtnew (EvalRowType env) rt, R.Fields rt, R.Fields rtnew,
    RecoverEnv rt,
    EvalEnvRow env, FromRow (R.Row rtnew),
    RevisableFd (key --> Vars env) rt (R.ProjectEnv (key :++ P.Vars env) rt),
@@ -170,6 +172,9 @@ prim = Prim @table @rt @p @fds @fdsnew
 select :: forall p ts rt pred fds pnew. Selectable rt p pred fds pnew =>
   HPhrase p -> Lens ts rt pred fds -> Lens ts rt (Simplify (p :& pred)) fds
 select pred l = Select @rt @p @pred @fds @pnew pred l
+
+debug :: forall ts rt p fds. (R.Fields rt) => Lens ts rt p fds -> Lens ts rt p fds
+debug l = Debug l
 
 dropl :: forall env (key :: [Symbol]) rt pred ts fds rtnew prednew fdsnew. (Droppable env key rt pred fds rtnew prednew fdsnew, RecoverEnv rt ) =>
   Lens ts rt pred fds -> Lens ts rtnew prednew fdsnew

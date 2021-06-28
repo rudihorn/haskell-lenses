@@ -94,5 +94,8 @@ instance (RevisableFd fd rt rt', Revisable fds rt rt') => Revisable (fd ': fds) 
 merge :: forall fds rt. Revisable fds rt rt => RecordsSet rt -> RecordsSet rt -> RecordsSet rt
 merge r s = revise @fds r s `Set.union` s
 
+recs :: forall rt vals. (vals ~ R.TupleType rt, ToRow rt vals) => [vals] -> RecordsSet rt
+recs vals = Set.fromList $ map (toRow @rt) vals
+
 rows :: forall rt vals. (vals ~ R.TupleType rt, ToRow rt vals) => [vals] -> RecordsSet rt
-rows vals = Set.fromList $ map (toRow @rt) vals
+rows = recs

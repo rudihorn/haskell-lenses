@@ -19,7 +19,7 @@ import Lens.Database.Base (LensGet, get)
 import Lens.Database.Postgres (PostgresDatabase)
 import LensPut
 import FunDep
-import Lens.Record.Sorted (RecordsSet, rows)
+import Lens.Record.Sorted (RecordsSet, recs)
 import Delta (fromSet)
 import Tables (RecoverTables)
 
@@ -71,7 +71,7 @@ tracks1 = join tracks albums
 
 tracks2 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks1
 
-tracks3 = select (#quantity !> di 2) tracks2
+tracks3 = select (#quantity #> di 2) tracks2
 
 type Output = '[ '("quantity", Int), '("date", Int), '("rating", Int), '("album", String)]
 type Tracks3 = '[ '("track", String), '("rating", Int), '("album", String), '("quantity", Int)]
@@ -83,7 +83,7 @@ type PredRow = '[ '("quantity", Int), '("album", String)]
 --     (3, "Lullaby", 3, "Show"),
 --     (5, "Trust", 4, "Wish")]
 
-unchangedAlbums = rows @Albums
+unchangedAlbums = recs @Albums
   [ ("Show", 3),
     ("Galore", 1),
     ("Paris", 4),
@@ -91,14 +91,14 @@ unchangedAlbums = rows @Albums
     ("Eponymous", 42),
     ("Disintegration", 6)]
 
-unchangedTracks = rows @Tracks
+unchangedTracks = recs @Tracks
   [ ("Lovesong", 1989, 5, "Galore"),
     ("Lovesong", 1989, 5, "Paris"),
     ("Lullaby", 1989, 3, "Galore"),
     ("Lullaby", 1989, 3, "Show"),
     ("Trust", 1992, 4, "Wish") ]
 
-examplePut = rows @Tracks3
+examplePut = recs @Tracks3
   [ ("Lullaby", 4, "Show", 3),
     ("Lovesong", 5, "Disintegration", 7)]
 
@@ -106,8 +106,8 @@ examplePut = rows @Tracks3
 my_hybrid_lenses b i s = do
     test_get tracks3 where
   pred = if b
-         then (dynamic @PredRow @Bool (var @"quantity" !> di i))
-         else (dynamic @PredRow @Bool (var @"album" != ds s))
+         then (dynamic @PredRow @Bool (var @"quantity" #> di i))
+         else (dynamic @PredRow @Bool (var @"album" #= ds s))
   tracks1 = Lens.join tracks albums
   tracks2 = select pred tracks1
   tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2

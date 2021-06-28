@@ -228,5 +228,5 @@ join :: Joinable s1 s2 snew joincols =>
 join l1 l2 = Join l1 l2
 
 lens1 = prim @"test1" @'[ '("A", Int), '("B", String)] @'[ '["A"] --> '["B"]]
-lens2 = select (var @"A" !> i @30) lens1
+lens2 = select (var @"A" #> i @30) lens1
 lens3 = dropl @'[ '("B", 'P.String "test")] @'["A"] lens2

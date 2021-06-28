@@ -36,26 +36,26 @@ instance forall v p. (KnownSymbol v, p ~ 'P.Var v) => IsLabel v (HPhrase p) wher
 var :: forall v. KnownSymbol v => HPhrase ('P.Var v)
 var = of_static @('P.Var v)
 
-(!>) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :> p2)
-(HPred p1) !> (HPred p2) = HPred $ P.InfixAppl P.GreaterThan p1 p2
+(#>) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :> p2)
+(HPred p1) #> (HPred p2) = HPred $ P.InfixAppl P.GreaterThan p1 p2
 
-(!<) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :< p2)
-(HPred p1) !< (HPred p2) = HPred $ P.InfixAppl P.LessThan p1 p2
+(#<) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :< p2)
+(HPred p1) #< (HPred p2) = HPred $ P.InfixAppl P.LessThan p1 p2
 
-(!&) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :& p2)
-(HPred p1) !& (HPred p2) = HPred $ P.InfixAppl P.LogicalAnd p1 p2
+(#&) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :& p2)
+(HPred p1) #& (HPred p2) = HPred $ P.InfixAppl P.LogicalAnd p1 p2
 
-(!|) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :| p2)
-(HPred p1) !| (HPred p2) = HPred $ P.InfixAppl P.LogicalAnd p1 p2
+(#|) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :| p2)
+(HPred p1) #| (HPred p2) = HPred $ P.InfixAppl P.LogicalAnd p1 p2
 
-(!=) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 := p2)
-(HPred p1) != (HPred p2) = HPred $ P.InfixAppl P.Equal p1 p2
+(#=) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 := p2)
+(HPred p1) #= (HPred p2) = HPred $ P.InfixAppl P.Equal p1 p2
 
-(!+) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :+ p2)
-(HPred p1) !+ (HPred p2) = HPred $ P.InfixAppl P.Plus p1 p2
+(#+) :: forall p1 p2. HPhrase p1 -> HPhrase p2 -> HPhrase (p1 :+ p2)
+(HPred p1) #+ (HPred p2) = HPred $ P.InfixAppl P.Plus p1 p2
 
-(!-) :: forall p. HPhrase p -> HPhrase ('P.UnaryAppl 'P.Negate p)
-(!-) (HPred p) = HPred $ P.UnaryAppl P.Negate p
+(#-) :: forall p. HPhrase p -> HPhrase ('P.UnaryAppl 'P.Negate p)
+(#-) (HPred p) = HPred $ P.UnaryAppl P.Negate p
 
 neg :: forall p. HPhrase p -> HPhrase ('P.UnaryAppl 'P.UnaryMinus p)
 neg (HPred p) = HPred $ P.UnaryAppl P.UnaryMinus p

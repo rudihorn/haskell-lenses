@@ -75,9 +75,12 @@ type family TransClosureF (from :: [Symbol]) (to :: [FunDep]) fuel :: [Symbol] w
   TransClosureF fr fds 0 = fr
   TransClosureF fr fds n = (TransClosureF (Closure fr fds) fds (n-1))
 
+type family OutputsL (fds :: [FunDep]) where
+  OutputsL '[] = '[]
+  OutputsL (fd ': fds) = (SetSubtract (Right fd) (Left fd)) :++ OutputsL fds
+
 type family Outputs (fds :: [FunDep]) where
-  Outputs '[] = '[]
-  Outputs (fd ': fds) = (SetSubtract (Right fd) (Left fd)) :++ Outputs fds
+  Outputs fds = SymAsSet (OutputsL fds)
 
 type family IsInTreeForm (fds :: [FunDep]) where
   IsInTreeForm fds =

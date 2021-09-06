@@ -157,7 +157,9 @@ type DropImplConstraints env key rt pred fds rtnew =
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 
 type DroppableExp env key rt pred fds rtnew =
-  (HasCols env rt, LJDI (Vars env) pred, DefVI env pred,
+  (HasCols env rt,
+   LJDI (Vars env) pred,
+   DefVI env pred,
    DropImplConstraints env key rt pred fds rtnew)
 
 type Droppable env key s snew =
@@ -217,9 +219,11 @@ debug :: forall s. (R.Fields (Rt s)) => Lens s -> Lens s
 debug l = Debug l
 
 dropl :: forall env (key :: [Symbol]) s snew.
-  (Droppable env key s snew, RecoverEnv (Rt s)) =>
+  (Droppable env key s snew) =>
   Lens s -> Lens snew
 dropl l = Drop @env @key @s @snew Proxy Proxy l
+
+-- RecoverEnv (Rt s)
 
 join :: Joinable s1 s2 snew joincols =>
     Lens s1 ->

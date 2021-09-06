@@ -46,6 +46,10 @@ data InEnvEvid where
   Take :: InEnvEvid
   Skip :: InEnvEvid -> InEnvEvid
 
+type family EvidType (env :: Env) (s :: InEnvEvid) :: * where
+  EvidType ('(_, val) ': _) 'Take = val
+  EvidType (_ ': xs) ('Skip evid) = EvidType xs evid
+
 type family LookupType (env :: Env) (s :: Symbol) :: * where
   LookupType '[] _ = Int
   LookupType ('(key, val) ': xs) key = val
@@ -62,6 +66,10 @@ type family FindMaybe (env :: Env) (s :: Symbol) :: Maybe InEnvEvid where
 
 type family Find (env :: Env) (s :: Symbol) :: InEnvEvid where
   Find env s = UnpackMaybe (FindMaybe env s)
+
+type family FindAlt (env :: Env) (s :: Symbol) :: InEnvEvid where
+  FindAlt ('(key, _) ': env) key = 'Take
+  FindAlt ('(_, val) ': env) key = 'Skip (FindAlt env key)
 
 data Row (e :: Env) where
   Empty :: Row '[]
@@ -102,7 +110,7 @@ instance (FetchRow t evid (Row env)) => FetchRow t ('Skip evid) (Row ('(so, to) 
   intfetch (Cons _ row) = intfetch @t @evid row
 
 type Fetchable s env t evid = (
-  t ~ LookupType env s,
+  t ~ EvidType env evid,
   Ord t,
   Eq t,
   evid ~ Find env s,
@@ -110,7 +118,7 @@ type Fetchable s env t evid = (
 
 type Test s env t = forall evid. Fetchable s env t evid
 
-fetch :: forall s env t evid. Fetchable s env t evid => (Row env) -> t
+fetch :: forall s env t evid. Fetchable s env t evid => Row env -> t
 fetch row = intfetch @t @evid row
 
 
@@ -181,7 +189,7 @@ revise r s = intrevise @rs1 @rs2 @(RevisableEvid rs1 rs2) r s
 
 type family ProjectEnv (s :: [Symbol]) (e :: Env) where
   ProjectEnv '[] _ = '[]
-  ProjectEnv (x ': xs) e = '(x, LookupType e x) ': ProjectEnv xs e
+  ProjectEnv (x ': xs) e = '(x, EvidType e (Find e x)) ': ProjectEnv xs e
 
 class Project (s :: [Symbol]) (e :: Env) where
   project :: Row e -> Row (ProjectEnv s e)

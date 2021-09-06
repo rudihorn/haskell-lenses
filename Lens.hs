@@ -160,6 +160,7 @@ type DroppableExp env key rt pred fds rtnew =
   (HasCols env rt,
    LJDI (Vars env) pred,
    DefVI env pred,
+   Subset (Vars env) (TransClosure key fds),
    DropImplConstraints env key rt pred fds rtnew)
 
 type Droppable env key s snew =

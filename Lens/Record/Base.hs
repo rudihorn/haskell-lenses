@@ -71,6 +71,10 @@ type family FindAlt (env :: Env) (s :: Symbol) :: InEnvEvid where
   FindAlt ('(key, _) ': env) key = 'Take
   FindAlt ('(_, val) ': env) key = 'Skip (FindAlt env key)
 
+type family EnvSubset (e1 :: Env) (e2 :: Env) where
+  EnvSubset '[] _ = ()
+  EnvSubset ('(key, val) ': e1) e2 = (FindMaybe e2 key ~ 'Just val, EnvSubset e1 e2)
+
 data Row (e :: Env) where
   Empty :: Row '[]
   Cons :: (Ord t, Eq t) => t -> Row env -> Row ('( key, t) ': env)

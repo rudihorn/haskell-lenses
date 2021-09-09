@@ -50,6 +50,11 @@ type family EvidType (env :: Env) (s :: InEnvEvid) :: * where
   EvidType ('(_, val) ': _) 'Take = val
   EvidType (_ ': xs) ('Skip evid) = EvidType xs evid
 
+type family LookupTypeMaybe (env :: Env) (s :: Symbol) :: Maybe * where
+  LookupTypeMaybe '[] _ = 'Nothing
+  LookupTypeMaybe ('(key, val) ': xs) key = 'Just val
+  LookupTypeMaybe (_ ': xs) key = LookupTypeMaybe xs key
+
 type family LookupType (env :: Env) (s :: Symbol) :: * where
   LookupType '[] _ = Int
   LookupType ('(key, val) ': xs) key = val
@@ -72,8 +77,8 @@ type family FindAlt (env :: Env) (s :: Symbol) :: InEnvEvid where
   FindAlt ('(_, val) ': env) key = 'Skip (FindAlt env key)
 
 type family EnvSubset (e1 :: Env) (e2 :: Env) where
+  EnvSubset ('(key, val) ': e1) e2 = (LookupTypeMaybe e2 key ~ 'Just val, EnvSubset e1 e2)
   EnvSubset '[] _ = ()
-  EnvSubset ('(key, val) ': e1) e2 = (FindMaybe e2 key ~ 'Just val, EnvSubset e1 e2)
 
 data Row (e :: Env) where
   Empty :: Row '[]

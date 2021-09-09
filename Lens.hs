@@ -19,7 +19,7 @@ import Label (NoDuplicates, IsDisjoint, Subset, Subtract, SymAsSet)
 import Lens.Predicate.Base ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
                             HasCols, LJDI, ReplacePredicate, Simplify,
                             SPhrase, TypesBool, Vars)
-import Lens.Record.Base (Env, Project, ProjectEnv, JoinEnv, RecoverEnv,
+import Lens.Record.Base (Env, EnvSubset, Project, ProjectEnv, JoinEnv, RecoverEnv,
                          RemoveEnv, OverlappingJoin, VarsEnv, Row)
 import Lens.Record.Sorted (Revisable, RevisableFd, RecordsSet, rows)
 import Tables (DisjointTables, RecoverTables, Tables)
@@ -157,7 +157,7 @@ type DropImplConstraints env key rt pred fds rtnew =
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 
 type DroppableExp env key rt pred fds rtnew =
-  (HasCols env rt,
+  (EnvSubset (EvalRowType env) rt,
    LJDI (Vars env) pred,
    DefVI env pred,
    Subset (Vars env) (TransClosure key fds),

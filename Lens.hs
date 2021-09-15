@@ -84,20 +84,23 @@ type LensCommonExp ts rt p fds =
 type LensCommon s =
   (LensCommonExp (Ts s) (Rt s) (P s) (Fds s))
 
-type LensableExp ts rt p fds fdsnew =
-  (p ~ DefaultPredicate,
-   Project (TableKey rt fdsnew) rt,
+type LensableExp ts rt p fdsnew =
+  (Project (TableKey rt fdsnew) rt,
    ToDynamic (ProjectEnv (TableKey rt fdsnew) rt),
    Recoverable (VarsEnv (ProjectEnv (TableKey rt fdsnew) rt)) [String],
    Project (UpdateColumns rt fdsnew) rt,
    ToDynamic (ProjectEnv (UpdateColumns rt fdsnew) rt),
    Recoverable (VarsEnv (ProjectEnv (UpdateColumns rt fdsnew) rt)) [String])
 
+type LensableImplConstraints s =
+  (LensableExp (Ts s) (Rt s) (P s) (Fds s),
+   LensCommon s)
+
 type Lensable s snew =
-  (LensableExp (Ts s) (Rt s) (P s) (Fds s) (Fds snew),
-   snew ~ 'Sort (Ts s) (Rt s) (P s) (SplitFDs (Fds s)),
-   LensCommon s,
-   LensCommon snew)
+  (snew ~ 'Sort (Ts s) (Rt s) (P s) (SplitFDs (Fds s)),
+   P.Typ (Rt snew) (P snew) ~ 'Just Bool,
+   Subset (Cols (Fds snew)) (VarsEnv (Rt snew)),
+   LensableImplConstraints snew)
 
 type JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
   (LensCommon ('Sort ts1 rt1 p1 fds1),
@@ -203,11 +206,18 @@ lensToFromRowHack (Select _ _) = Hack
 lensToFromRowHack (Drop _ _ _) = Hack
 lensToFromRowHack (Join _ _) = Hack
 
-prim :: forall table rt fds p fdsnew s snew.
+prim_pred :: forall table rt fds p fdsnew s snew.
   (s ~ 'Sort '[table] rt p fds,
   Lensable s snew)
   => Lens snew
-prim = Prim @table @rt @p @fds
+prim_pred = Prim @table @rt @p @fds
+
+prim :: forall table rt fds fdsnew s snew.
+  (s ~ 'Sort '[table] rt DefaultPredicate fds,
+  Lensable s snew)
+  => Lens snew
+prim = Prim @table @rt @DefaultPredicate @fds
+
 
 select :: forall p s snew.
   (Selectable p s snew) => HPhrase p -> Lens s -> Lens snew

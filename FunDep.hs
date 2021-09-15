@@ -49,6 +49,10 @@ type Fds4 = '[Fd1, Fd7, Fd3, Fd4]
 data FunDepList :: [k] -> * where
   FunDepList :: FunDepList fds
 
+type family Cols (f :: [FunDep]) :: [Symbol] where
+  Cols '[] = '[]
+  Cols ('FunDep l r ': fds) = l :++ r :++ Cols fds
+
 type family Left (f :: FunDep) :: [Symbol] where
   Left ('FunDep left _) = left
 

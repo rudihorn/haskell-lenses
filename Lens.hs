@@ -19,7 +19,7 @@ import Label (NoDuplicates, IsDisjoint, Subset, Subtract, SymAsSet)
 import Lens.Predicate.Base ((:&), DefVI, EvalEnvRow, EvalRowType, FTV,
                             HasCols, LJDI, ReplacePredicate, Simplify,
                             SPhrase, TypesBool, Vars)
-import Lens.Record.Base (Env, Project, ProjectEnv, JoinEnv, RecoverEnv,
+import Lens.Record.Base (Env, EnvSubset, Project, ProjectEnv, JoinEnv, RecoverEnv,
                          RemoveEnv, OverlappingJoin, VarsEnv, Row)
 import Lens.Record.Sorted (Revisable, RevisableFd, RecordsSet, rows)
 import Tables (DisjointTables, RecoverTables, Tables)
@@ -162,7 +162,10 @@ type DropImplConstraints env key rt pred fds rtnew =
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 
 type DroppableExp env key rt pred fds rtnew =
-  (HasCols env rt, LJDI (Vars env) pred, DefVI env pred,
+  (EnvSubset (EvalRowType env) rt,
+   LJDI (Vars env) pred,
+   DefVI env pred,
+   Subset (Vars env) (TransClosure key fds),
    DropImplConstraints env key rt pred fds rtnew)
 
 type Droppable env key s snew =
@@ -229,9 +232,11 @@ debug :: forall s. (R.Fields (Rt s)) => Lens s -> Lens s
 debug l = Debug l
 
 dropl :: forall env (key :: [Symbol]) s snew.
-  (Droppable env key s snew, RecoverEnv (Rt s)) =>
+  (Droppable env key s snew) =>
   Lens s -> Lens snew
 dropl l = Drop @env @key @s @snew Proxy Proxy l
+
+-- RecoverEnv (Rt s)
 
 join :: Joinable s1 s2 snew joincols =>
     Lens s1 ->

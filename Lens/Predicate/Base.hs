@@ -67,7 +67,7 @@ data Phrase id v where
   UnaryAppl :: UnaryOperator -> Phrase id v -> Phrase id v
   In :: [id] -> [[v]] -> Phrase id v
   Case :: Maybe (Phrase id v) -> [(Phrase id v, Phrase id v)] -> Phrase id v -> Phrase id v
-  Dynamic :: RT.Env -> * -> Phrase id v
+  Erased :: RT.Env -> * -> Phrase id v
 
 type SPhrase = Phrase Symbol Value
 
@@ -128,7 +128,7 @@ type family FTV (phrase :: SPhrase) :: [Symbol] where
   FTV ('In ids _) = ids
   FTV ('Case 'Nothing ps other) = '[] :++ FTV other
   FTV ('Case ('Just p) ps other) = FTV p :++ FTV other
-  FTV ('Dynamic rt _) = VarsEnv rt
+  FTV ('Erased rt _) = VarsEnv rt
 
 
 type family TypVal (c :: Value) :: * where
@@ -192,7 +192,7 @@ type family Typ (env :: Env) (phrase :: SPhrase) :: Maybe * where
   Typ env ('Case 'Nothing cases other) = TypCase env ('Just Bool) (Typ env other) cases
   Typ env ('Case ('Just cond) cases other) = TypCase env (Typ env cond) (Typ env other) cases
   Typ env ('In ids vss) = TypeIn (TypAll env ids) vss
-  Typ env ('Dynamic rt t) = TypeDynamic env rt t
+  Typ env ('Erased rt t) = TypeDynamic env rt t
 
 type TypesBool env phr = Typ env phr ~ 'Just Bool
 

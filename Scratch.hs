@@ -3,6 +3,7 @@
 
 module Scratch where
 
+import GHC.Types (Nat)
 import Data.Set (fromList)
 import Data.Text.Format
 import Database.PostgreSQL.Simple(query_, connect, defaultConnectInfo, connectDatabase, connectUser, connectPassword, Connection)
@@ -15,6 +16,7 @@ import Lens.FunDep.Affected (affected)
 import Lens.Record.Base (RecoverEnv(..), Row, Fields)
 import Lens.Database.Query
 import Lens.Predicate.Hybrid
+import Lens.Predicate.Base ((:=),Phrase(..))
 import Lens.Database.Base (LensGet, get)
 import Lens.Database.Postgres (PostgresDatabase)
 import LensPut
@@ -106,14 +108,23 @@ examplePut = recs @Tracks3
 my_hybrid_lenses b i s = do
     test_get tracks3 where
   pred = if b
-         then (dynamic @PredRow @Bool (var @"quantity" #> di i))
-         else (dynamic @PredRow @Bool (var @"album" #= ds s))
+         then (erased @PredRow @Bool (var @"quantity" #> di i))
+         else (erased @PredRow @Bool (var @"album" #= ds s))
   tracks1 = Lens.join tracks albums
   tracks2 = select pred tracks1
   tracks3 = dropl @'[ '("date", 'P.Int 2020)] @'["track"] tracks2
 
 type FdsEx = '[ '["album"] --> '["quantity"],
               '["quantity"] --> '["date", "rating"]]
+
+from_year ::
+  Selectable (Var "date" := Erased '[] Int) s snew
+  => Int -> Lens s -> Lens snew
+from_year year l =
+  select p l where
+  p = var @"date" #= di year
+
+tracks_2020 = from_year 2020 tracks
 
 affect = do
   res <- test_get tracks3

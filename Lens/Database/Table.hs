@@ -53,18 +53,29 @@ build_create_tbl_ifne  :: LensDatabase db => db -> Table -> IO Builder
 build_create_tbl_ifne db tbl =
   do name <- escapeId db $ tblName tbl
      cols <- mapM (build_col db) $ tblColumns tbl
-     keyOpt <- mapM pk $ Maybe.maybeToList $ tblKey tbl
-     let opts = concat [cols, keyOpt]
-     return $ F.build "CREATE TABLE IF NOT EXISTS {} ({})"
-       (name, build_sep_comma cols) where
-  pk cols =
+     let pkcols = tblKey tbl
+     keyOpt <- pk pkcols
+     return $ F.build "CREATE TABLE IF NOT EXISTS {} ({}{})"
+       (name, build_sep_comma cols, keyOpt) where
+  pk (Just cols) =
      do cols <- mapM (escapeId db) cols
-        return $ F.build "PRIMARY KEY ({})" (Only $ build_sep_comma cols)
+        return $ F.build ", PRIMARY KEY ({})" (Only $ build_sep_comma cols)
+  pk Nothing = return $ F.build "" ()
+
+add_foreign_key db fname tbl col ftbl fkey =
+  do fnameId <- escapeId db fname
+     tblId <- escapeId db tbl
+     colId <- escapeId db col
+     ftblId <- escapeId db ftbl
+     fkeyId <- escapeId db fkey
+     let bld = F.build "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})" (tblId, fname, colId, ftbl, fkeyId)
+     execute db bld
 
 {-| Create the database table if it does not exist. -}
 setup :: (LensQuery db, LensDatabase db) => db -> Lens s -> IO ()
 setup db (Prim :: Lens s) =
   do bld <- build_create_tbl_ifne db $ Table name cols key
+     print bld
      execute db bld where
   fds = recover @(Fds s) Proxy
   key = do (left, right) <- Maybe.listToMaybe fds

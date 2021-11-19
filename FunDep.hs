@@ -17,7 +17,7 @@ data FunDep where
 
 instance (Recoverable l [String], Recoverable r [String]) =>
   Recoverable ('FunDep l r) ([String], [String]) where
-  recover Proxy = (recover @l Proxy, recover @l Proxy)
+  recover Proxy = (recover @l Proxy, recover @r Proxy)
 
 type family (-->) (left :: [Symbol]) (right :: [Symbol]) :: FunDep where
   xs --> ys = ('FunDep (SymAsSet xs) (SymAsSet ys) :: FunDep)
@@ -91,9 +91,12 @@ type InTreeForm fds = OkOrError (IsInTreeForm fds) ('Text "The functional depend
 
 -- Cycle checks
 
-type family StartingPoints (lefts :: [[Symbol]]) (rights :: [[Symbol]]) :: [[Symbol]] where
-  StartingPoints '[] _ = '[]
-  StartingPoints (x ': xs) rights = If (DisjointFromAll x rights) (x ': StartingPoints xs rights) (StartingPoints xs rights)
+type family StartingPointsEx (lefts :: [[Symbol]]) (rights :: [[Symbol]]) :: [[Symbol]] where
+  StartingPointsEx '[] _ = '[]
+  StartingPointsEx (x ': xs) rights = If (DisjointFromAll x rights) (x ': StartingPointsEx xs rights) (StartingPointsEx xs rights)
+
+type family StartingPoints (fds :: [FunDep]) :: [[Symbol]] where
+  StartingPoints fds = SLAsSet (StartingPointsEx (Lefts fds) (Rights fds))
 
 type family FollowRes (isel :: Bool) (from :: [[Symbol]]) (fd :: FunDep) (sub :: ([[Symbol]], [FunDep], [FunDep])) :: ([[Symbol]], [FunDep], [FunDep]) where
   FollowRes 'True from fd '(visited, vfds, fds) = '(Right fd ': visited, fd ': vfds, fds)
@@ -109,7 +112,7 @@ type family IsAcyclicEx (res :: ([[Symbol]], [FunDep], [FunDep])) (fuel :: Nat) 
   IsAcyclicEx '(syms, _, fds) n = IsAcyclicEx (Follow syms fds) (n-1)
 
 type family IsAcyclic (fds :: [FunDep]) :: Bool where
-  IsAcyclic fds = IsAcyclicEx '(StartingPoints (Lefts fds) (Rights fds), '[], fds) (Len fds)
+  IsAcyclic fds = IsAcyclicEx '(StartingPoints fds, '[], fds) (Len fds)
 
 -- FDS sanitation
 
@@ -154,7 +157,7 @@ type family TopologicalSortEx (res :: ([[Symbol]], [FunDep], [FunDep])) :: [FunD
   IsAcyclicEx '(syms, vfds, fds) = vfds :++ TopologicalSortEx (Follow syms fds)
 
 type family TopologicalSort (fds :: [FunDep]) :: [FunDep] where
-  TopologicalSort fds = TopologicalSortEx '(StartingPoints (Lefts fds) (Rights fds), '[], fds)
+  TopologicalSort fds = TopologicalSortEx '(StartingPoints fds, '[], fds)
 
 type family Roots (fds :: [FunDep]) :: [Symbol] where
-  Roots fds = Concat (StartingPoints (Lefts fds) (Rights fds))
+  Roots fds = Concat (StartingPoints fds)

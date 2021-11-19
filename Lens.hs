@@ -152,10 +152,12 @@ type DropImplConstraints env key rt pred fds rtnew =
   (RT.Joinable rtnew (EvalRowType env) rt, R.Fields rt, R.Fields rtnew,
    RecoverEnv rt,
    EvalEnvRow env, FromRow (R.Row rtnew),
+   RevisableFd (key --> Vars env) rt rt,
    RevisableFd (key --> Vars env) rt (R.ProjectEnv (key :++ P.Vars env) rt),
    Recoverable (SymAsSet key) [String],
    Project (SymAsSet key) rtnew,
    Affected '[key --> Vars env] rtnew,
+   FromRow (R.Row rt),
    FromRow (R.Row (ProjectEnv (key :++ P.Vars env) rt)),
    RecoverEnv (ProjectEnv (key :++ P.Vars env) rt))
 

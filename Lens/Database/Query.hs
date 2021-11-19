@@ -202,6 +202,11 @@ build_delete db tbl match = build_delete_ex db tbl matchex where
   vals = toDynamic match
   matchex = zip cols vals
 
+build_delete_all :: forall db. (LensDatabase db) => db -> String -> IO Builder
+build_delete_all db tbl =
+  do etbl <- escapeId db tbl
+     return $ build "DELETE FROM {} WHERE TRUE" (Only etbl) where
+
 build_update_ex :: forall db. LensDatabase db =>
   db -> String -> [(String, DP.Value)] -> [(String, DP.Value)] -> IO Builder
 build_update_ex db tbl match update =

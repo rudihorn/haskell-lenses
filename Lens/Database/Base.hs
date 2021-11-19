@@ -4,6 +4,7 @@
 
 module Lens.Database.Base where
 
+import Data.Set (fromList, Set)
 import Data.Text.Lazy.Builder (Builder)
 import Data.Type.Set (Proxy(..))
 import Database.PostgreSQL.Simple.FromRow (FromRow(..))
@@ -37,5 +38,6 @@ query_ex' c t cols_map p = query_ex @c @rt Proxy c t cols_map p
 
 type LensGet s c = (LensQueryable s, FromRow (Row (Rt s)), LensQuery c)
 
-get :: forall s c. LensGet s c => c -> Lens s -> IO [Row (Rt s)]
-get c l = query c l
+get :: forall s c. LensGet s c => c -> Lens s -> IO (Set (Row (Rt s)))
+get c l = do res <- query c l
+             return $ fromList res

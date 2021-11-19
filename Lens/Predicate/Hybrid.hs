@@ -27,8 +27,8 @@ data HPhrase (p :: SPhrase) where
 of_static :: forall (p :: SPhrase). Recoverable p DPhrase => HPhrase p
 of_static = HPred @p $ recover @p Proxy
 
-dynamic :: forall rt ret (p :: SPhrase). (P.Typ rt p ~ 'Just ret) => HPhrase p -> HPhrase ('P.Dynamic rt ret)
-dynamic (HPred p) = HPred p
+erased :: forall rt ret (p :: SPhrase). (P.Typ rt p ~ 'Just ret) => HPhrase p -> HPhrase ('P.Erased rt ret)
+erased (HPred p) = HPred p
 
 instance forall v p. (KnownSymbol v, p ~ 'P.Var v) => IsLabel v (HPhrase p) where
   fromLabel = of_static @('P.Var v)
@@ -69,13 +69,13 @@ s = of_static @('P.Constant ('P.String v))
 b :: forall v. Recoverable v Bool => HPhrase ('P.Constant ('P.Bool v))
 b = of_static @('P.Constant ('P.Bool v))
 
-di :: Int -> HPhrase ('P.Dynamic '[] Int)
+di :: Int -> HPhrase ('P.Erased '[] Int)
 di v = HPred (P.Constant $ DP.Int v)
 
-ds :: String -> HPhrase ('P.Dynamic '[] String)
+ds :: String -> HPhrase ('P.Erased '[] String)
 ds v = HPred (P.Constant $ DP.String v)
 
-db :: Bool -> HPhrase ('P.Dynamic '[] Bool)
+db :: Bool -> HPhrase ('P.Erased '[] Bool)
 db v = HPred (P.Constant $ DP.Bool v)
 
 ifthen :: forall pcond pthen pelse. HPhrase pcond -> HPhrase pthen -> HPhrase pelse ->

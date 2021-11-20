@@ -14,6 +14,7 @@ import Database.PostgreSQL.Simple.Types(Query(..), fromQuery)
 import Database.PostgreSQL.Simple.Internal(escapeIdentifier, escapeStringConn)
 import Database.PostgreSQL.Simple.FromRow
 import System.Random
+import System.CPUTime
 
 import Lens
 import Lens.FunDep.Affected (affected)
@@ -22,9 +23,9 @@ import Lens.Database.Query
 import Lens.Predicate.Hybrid
 import Lens.Predicate.Base ((:=),Phrase(..))
 import Lens.Database.Base (LensGet, get)
-import Lens.Database.Table (add_foreign_key, setup)
+import Lens.Database.Table (create_index, setup)
 import Lens.Database.Postgres (PostgresDatabase)
-import Lens.Put.Classic
+import Lens.Put.Classic (put_classic)
 import LensPut
 import FunDep
 import Lens.Record.Sorted (RecordsSet, recs)
@@ -59,7 +60,7 @@ with_db f =
 init_db c =
   do setup c t1
      setup c t2
-     add_foreign_key c "fk_b" "t1" "b" "t2" "b"
+     create_index c "fk_b" "t1" "b"
 
 get_t1 = with_db $ (\c -> get c t1)
 get_t2 = with_db $ (\c -> get c t2)
@@ -82,12 +83,12 @@ gen_t2 n =
 
 fill_t1 n c =
   do dat <- recs <$> gen_t1 n
-     put c t1 dat
+     put_classic c t1 dat
      return dat
 
 fill_t2 n c =
   do dat <- recs <$> gen_t2 n
-     put c t2 dat
+     put_classic c t2 dat
      return dat
 
 fill_db n c =
@@ -100,11 +101,37 @@ fill_db n c =
 type Fds = '[ 'FunDep '["a"] '["b"], 'FunDep '["a"] '["c"],
              'FunDep '["b"] '["d"]]
 
+timed m =
+  do t1 <- getCPUTime
+     a <- m
+     t2 <- getCPUTime
+     let t = fromIntegral (t2-t1) * 1e-9
+     return (t,a)
+
+benchmark_1_lens = select (#c #= i @3) t1t2
+
 benchmark_1 c =
-  do d <- get c t1t2
+  do d <- get c l
      let dat = Set.map chrec d
-     put c t1t2 dat
-     dbg <- get c t1t2
-     put c t1t2 d where
-  l = select (#c #> i @3) t1t2
+     (t1,()) <- timed $ put c l dat
+     dbg1 <- get c l
+     put c l d -- revert
+     (t2,()) <- timed $ put_classic c l dat
+     dbg2 <- get c l
+     put c l d -- revert
+     return (t1,t2)
+     where
+  l = benchmark_1_lens
   chrec r = if fetch @"b" r < 100 then update @"d" 5 r else r
+
+bench_avg wm n b c =
+  do _ <- mapM (\_ -> b c) [1..wm]
+     bms <- mapM (\_ -> b c) [1..n]
+     return bms
+
+avg_timings t =
+  (t1avg / l, t2avg / l) where
+  l = fromIntegral $ length t
+  t1avg = fold (\(a,_) b -> a+b) t
+  t2avg = fold (\(_,a) b -> a+b) t
+

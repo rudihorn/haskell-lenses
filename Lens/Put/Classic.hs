@@ -74,9 +74,8 @@ put_classic_select c (HPred p) (l :: Lens s) _ n =
 
 put_classic :: forall c s.
   (RecoverTables (Ts s), R.RecoverEnv (Rt s), LensQuery c, LensDatabase c) =>
-  c -> (Lens s) -> RecordsSet (Rt s) -> Bool -> IO ()
-
-put_classic c (Prim :: Lens s) view what_if =
+  c -> (Lens s) -> RecordsSet (Rt s) -> IO ()
+put_classic c (Prim :: Lens s) view =
   do qdelete <- build_delete_all c tbl
      action qdelete
      if Set.null view
@@ -85,21 +84,44 @@ put_classic c (Prim :: Lens s) view what_if =
          do qinsert <- build_insert c tbl $ Set.toList view
             action qinsert where
   tbl = head $ recover_tables @(Ts s) Proxy
-  action = if what_if then Prelude.print else execute c
-
-put_classic c (Debug l) view wif =
+  action = if False then Prelude.print else execute c
+put_classic c (Debug l) view =
   do Prelude.print $ show view
-     put_classic c l view wif
-
-put_classic c l@(Drop key env l1) n wif =
+     put_classic c l view
+put_classic c l@(Drop key env l1) n =
   do res <- put_classic_drop c key env l1 l n
-     put_classic c l1 res wif
-
-put_classic c l@(Select p l1) n wif =
+     put_classic c l1 res
+put_classic c l@(Select p l1) n =
   do res <- put_classic_select c p l1 l n
-     put_classic c l1 res wif
-
-put_classic c l@(Join l1 l2) o wif =
+     put_classic c l1 res
+put_classic c l@(Join l1 l2) o =
   do (m', n') <- put_classic_join c l1 l2 l o
-     put_classic c l1 m' wif
-     put_classic c l2 n' wif
+     put_classic c l1 m'
+     put_classic c l2 n'
+
+put_classic_wif :: forall c s.
+  (RecoverTables (Ts s), R.RecoverEnv (Rt s), LensQuery c, LensDatabase c) =>
+  c -> (Lens s) -> RecordsSet (Rt s) -> IO ()
+put_classic_wif c (Prim :: Lens s) view =
+  do qdelete <- build_delete_all c tbl
+     action qdelete
+     if Set.null view
+       then return ()
+       else
+         do qinsert <- build_insert c tbl $ Set.toList view
+            action qinsert where
+  tbl = head $ recover_tables @(Ts s) Proxy
+  action = if True then Prelude.print else execute c
+put_classic_wif c (Debug l) view =
+  do Prelude.print $ show view
+     put_classic c l view
+put_classic_wif c l@(Drop key env l1) n =
+  do res <- put_classic_drop c key env l1 l n
+     put_classic c l1 res
+put_classic_wif c l@(Select p l1) n =
+  do res <- put_classic_select c p l1 l n
+     put_classic c l1 res
+put_classic_wif c l@(Join l1 l2) o =
+  do (m', n') <- put_classic_join c l1 l2 l o
+     put_classic c l2 n'
+     put_classic c l1 m'

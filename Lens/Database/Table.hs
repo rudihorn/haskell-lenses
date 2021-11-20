@@ -71,6 +71,15 @@ add_foreign_key db fname tbl col ftbl fkey =
      let bld = F.build "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})" (tblId, fname, colId, ftbl, fkeyId)
      execute db bld
 
+{-| Create a database index called iname for table tbl and column col. -}
+create_index db iname tbl col =
+  do inameId <- escapeId db iname
+     tblId <- escapeId db tbl
+     colId <- escapeId db col
+     let bld = F.build "CREATE INDEX IF NOT EXISTS {} ON {} ({})"
+              (inameId, tblId, colId)
+     execute db bld
+
 {-| Create the database table if it does not exist. -}
 setup :: (LensQuery db, LensDatabase db) => db -> Lens s -> IO ()
 setup db (Prim :: Lens s) =

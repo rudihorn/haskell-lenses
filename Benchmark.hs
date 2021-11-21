@@ -28,7 +28,7 @@ import Lens.Database.Base (LensGet, get)
 import Lens.Database.Table (create_index, setup)
 import Lens.Database.Postgres (PostgresDatabase)
 import Lens.Put.Classic (put_classic)
-import LensPut
+import Lens.Put.Incremental (put)
 import FunDep
 import Lens.Record.Sorted (RecordsSet, recs)
 import Delta (fromSet)

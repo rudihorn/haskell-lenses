@@ -4,7 +4,7 @@
 module Scratch where
 
 import GHC.Types (Nat)
-import Data.Set (fromList)
+import Data.Set (fromList, Set)
 import Data.Text.Format
 import Database.PostgreSQL.Simple(query_, connect, defaultConnectInfo, connectDatabase, connectUser, connectPassword, Connection)
 import Database.PostgreSQL.Simple.Types(Query(..), fromQuery)
@@ -19,7 +19,7 @@ import Lens.Predicate.Hybrid
 import Lens.Predicate.Base ((:=),Phrase(..))
 import Lens.Database.Base (LensGet, get)
 import Lens.Database.Postgres (PostgresDatabase)
-import LensPut
+import Lens.Put.Incremental (put, put_wif, LensPut)
 import FunDep
 import Lens.Record.Sorted (RecordsSet, recs)
 import Delta (fromSet)
@@ -35,7 +35,7 @@ db_connect = connect defaultConnectInfo {
     connectPassword = "links"
   }
 
-test_get :: (LensGet s PostgresDatabase) => Lens s -> IO [QueryRow s]
+test_get :: (LensGet s PostgresDatabase) => Lens s -> IO (Set (QueryRow s))
 test_get (l :: Lens s) = do
   conn <- db_connect
   res <- get conn l
@@ -128,5 +128,5 @@ tracks_2020 = from_year 2020 tracks
 
 affect = do
   res <- test_get tracks3
-  q <- DP.print $ affected @FdsEx $ fromList res
+  q <- DP.print $ affected @FdsEx $ res
   return q

@@ -2,7 +2,7 @@
              AllowAmbiguousTypes, KindSignatures, DataKinds, TypeOperators,
              TypeInType, GADTs, UndecidableInstances, ConstraintKinds #-}
 
-module LensPut where
+module Lens.Put.Incremental where
 
 import Data.Type.Set (Proxy(..), (:++))
 import Data.ByteString.Builder(toLazyByteString)
@@ -20,7 +20,7 @@ import Lens.Predicate.Hybrid (HPhrase(..))
 import FunDep
 -- import FunDep (FunDep(..), Left, Right, TopologicalSort)
 import Label (IsSubset, AdjustOrder, Subtract)
-import Lens (Droppable, Lens(..), TableKey, Rt, Fds, Ts)
+import Lens (setDebugTime, Droppable, Lens(..), TableKey, Rt, Fds, Ts)
 import Lens.Database.Base (LensDatabase(..), LensQuery, Columns, query, query_ex, execute)
 import Lens.Database.Query (build_delete, build_insert, build_update, column_map, query_predicate)
 import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
@@ -69,6 +69,10 @@ put_delta c (Prim :: Lens s) delta_m what_if =
 
 put_delta c (Debug l) delta_m wif =
   do Prelude.print $ show delta_m
+     put_delta c l delta_m wif
+
+put_delta c dl@(DebugTime _ l) delta_m wif =
+  do setDebugTime dl
      put_delta c l delta_m wif
 
 put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens s1)) delta_n wif =

@@ -21,7 +21,7 @@ import Lens.Predicate.Hybrid (HPhrase(..))
 import FunDep
 -- import FunDep (FunDep(..), Left, Right, TopologicalSort)
 import Label (IsSubset, AdjustOrder, Subtract)
-import Lens (Droppable, Joinable, Selectable, Lens(..), TableKey, Rt, Fds, Ts)
+import Lens (setDebugTime, Droppable, Joinable, Selectable, Lens(..), TableKey, Rt, Fds, Ts)
 import Lens.Database.Base (LensDatabase(..), LensQuery, Columns, get, query, query_ex, execute)
 import Lens.Database.Query (build_delete, build_delete_all, build_insert, build_update, column_map, query_predicate)
 import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
@@ -88,6 +88,9 @@ put_classic c (Prim :: Lens s) view =
 put_classic c (Debug l) view =
   do Prelude.print $ show view
      put_classic c l view
+put_classic c dl@(DebugTime _ l) view =
+  do setDebugTime dl
+     put_classic c l view
 put_classic c l@(Drop key env l1) n =
   do res <- put_classic_drop c key env l1 l n
      put_classic c l1 res
@@ -114,6 +117,9 @@ put_classic_wif c (Prim :: Lens s) view =
   action = if True then Prelude.print else execute c
 put_classic_wif c (Debug l) view =
   do Prelude.print $ show view
+     put_classic c l view
+put_classic_wif c dl@(DebugTime _ l) view =
+  do setDebugTime dl
      put_classic c l view
 put_classic_wif c l@(Drop key env l1) n =
   do res <- put_classic_drop c key env l1 l n

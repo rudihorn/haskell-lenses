@@ -42,6 +42,7 @@ instance (RecoverTables (Ts s), RecoverEnv (Rt s)) => ColumnMap (Lens s) where
     f (col, typ) = (col, ([table_name], typ))
     table_name = head $ recover_tables @(Ts s) Proxy
   column_map (Debug l) = column_map l
+  column_map (DebugTime _ l) = column_map l
   column_map (Select _ l) = column_map l
   column_map (Drop Proxy Proxy l) = column_map l
   column_map (Join l1 l2) = Map.unionWith f (column_map l1) (column_map l2) where
@@ -53,6 +54,7 @@ class QueryPredicate a where
 instance QueryPredicate (Lens s) where
   query_predicate Prim = P.Constant (DP.Bool True)
   query_predicate (Debug l) = query_predicate l
+  query_predicate (DebugTime _ l) = query_predicate l
   query_predicate (Drop Proxy Proxy l) = query_predicate l
   query_predicate (Select (HPred pr) l) = DP.simplify $ P.InfixAppl (P.LogicalAnd) pr (query_predicate l)
   query_predicate (Join l1 l2) = DP.simplify $ P.InfixAppl (P.LogicalAnd) (query_predicate l1) (query_predicate l2)

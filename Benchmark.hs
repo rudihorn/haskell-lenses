@@ -7,6 +7,7 @@ import Control.Exception (assert)
 import GHC.Types (Nat)
 import Data.Set as Set
 import Data.Set (fromList)
+import Data.List (sort)
 import Data.Text.Format
 import Data.Type.Set (Proxy(..))
 import Database.PostgreSQL.Simple(query_, connect, defaultConnectInfo, connectDatabase, connectUser, connectPassword, Connection)
@@ -15,6 +16,7 @@ import Database.PostgreSQL.Simple.Internal(escapeIdentifier, escapeStringConn)
 import Database.PostgreSQL.Simple.FromRow
 import System.Random
 import System.CPUTime
+import Data.Time.Clock (getCurrentTime, diffUTCTime, nominalDiffTimeToSeconds)
 
 import Lens
 import Lens.FunDep.Affected (affected)
@@ -46,12 +48,18 @@ db_connect = connect defaultConnectInfo {
 type T1 = '[ '("a", Int), '("b", Int), '("c", Int)]
 
 t1 = prim @"t1" @T1 @'[ '["a"] --> '["b", "c"]]
+t1dbg = debugTime t1
 
 type T2 = '[ '("b", Int), '("d", Int)]
 
 t2 = prim @"t2" @T2 @'[ '["b"] --> '["d"]]
+t2dbg = debugTime t2
 
 t1t2 = join t1 t2
+t1t2dbg =
+  do t1d <- t1dbg
+     t2d <- t2dbg
+     return $ join t1d t2d
 
 with_db f =
   do c <- db_connect
@@ -102,16 +110,27 @@ type Fds = '[ 'FunDep '["a"] '["b"], 'FunDep '["a"] '["c"],
              'FunDep '["b"] '["d"]]
 
 timed m =
+  do t1 <- getCurrentTime
+     a <- m
+     t2 <- getCurrentTime
+     let df = nominalDiffTimeToSeconds $ diffUTCTime t2 t1
+     let t = round $ toRational df * 1e3
+     return (t,a)
+
+timed_alt m =
   do t1 <- getCPUTime
      a <- m
      t2 <- getCPUTime
      let t = fromIntegral (t2-t1) * 1e-9
      return (t,a)
 
+
 benchmark_1_lens = select (#c #= i @3) t1t2
 
 benchmark_1 c =
-  do d <- get c l
+  do l1 <- t1t2dbg
+     l <- debugTime l1
+     d <- get c l
      let dat = Set.map chrec d
      (t1,()) <- timed $ put c l dat
      dbg1 <- get c l
@@ -121,7 +140,7 @@ benchmark_1 c =
      put c l d -- revert
      return (t1,t2)
      where
-  l = benchmark_1_lens
+  -- l = benchmark_1_lens
   chrec r = if fetch @"b" r < 100 then update @"d" 5 r else r
 
 bench_avg wm n b c =
@@ -129,9 +148,18 @@ bench_avg wm n b c =
      bms <- mapM (\_ -> b c) [1..n]
      return bms
 
-avg_timings t =
+mean_timings t =
   (t1avg / l, t2avg / l) where
   l = fromIntegral $ length t
   t1avg = fold (\(a,_) b -> a+b) t
   t2avg = fold (\(_,a) b -> a+b) t
 
+median t =
+  if mod l 2 > 0 then (t !! i + t !! (i+1)) / 2 else t !! i where
+  sorted = sort t
+  l = length t
+  i = quot l 2
+
+median_timings t =
+  (map_median fst, map_median snd) where
+  map_median f = median $ fmap f t

@@ -11,6 +11,8 @@ import Data.Type.Set ((:++), Proxy(..))
 import Database.PostgreSQL.Simple.FromRow
 
 import Common
+import Data.Time.Clock (getCurrentTime, UTCTime)
+import Data.IORef (newIORef, readIORef, writeIORef, IORef)
 import Lens.FunDep.Affected (Affected, ToDynamic)
 import Lens.Predicate.Compile (LookupMap)
 import FunDep
@@ -180,6 +182,7 @@ type Debuggable rt =
 data Lens (s :: Sort) where
   Prim :: Lensable ('Sort '[table] rt p fds) snew => Lens snew
   Debug :: Debuggable (Rt s) => Lens s -> Lens s
+  DebugTime :: IORef UTCTime -> Lens s -> Lens s
   Join :: Joinable s1 s2 snew joincols =>
     Lens s1 ->
     Lens s2 ->
@@ -207,6 +210,7 @@ lrows (l :: Lens s) vars = rows @(Rt s) vars
 lensToFromRowHack :: Lens s -> FromRowHack (Rt s)
 lensToFromRowHack Prim = Hack
 lensToFromRowHack (Debug l) = lensToFromRowHack l
+lensToFromRowHack (DebugTime _ l) = lensToFromRowHack l
 lensToFromRowHack (Select _ _) = Hack
 lensToFromRowHack (Drop _ _ _) = Hack
 lensToFromRowHack (Join _ _) = Hack
@@ -230,6 +234,20 @@ select pred l = Select pred l
 
 debug :: forall s. (R.Fields (Rt s)) => Lens s -> Lens s
 debug l = Debug l
+
+debugTime :: forall s. Lens s -> IO (Lens s)
+debugTime l =
+  do t <- getCurrentTime
+     r <- newIORef t
+     return $ DebugTime r l
+
+setDebugTime :: Lens s -> IO ()
+setDebugTime (DebugTime r _) =
+  do t <- getCurrentTime
+     writeIORef r t
+
+getDebugTime :: Lens s -> IO UTCTime
+getDebugTime (DebugTime r _) = readIORef r
 
 dropl :: forall env (key :: [Symbol]) s snew.
   (Droppable env key s snew) =>

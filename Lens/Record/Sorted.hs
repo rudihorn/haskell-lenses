@@ -11,6 +11,7 @@ import Data.Type.Set ((:++))
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 
+import Control.DeepSeq
 import Lens.Predicate.Compile (LookupMap, compile)
 import Delta (Delta)
 import Lens.Predicate.Dynamic (DPhrase)

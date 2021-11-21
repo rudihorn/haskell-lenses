@@ -13,6 +13,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 import Common
+import Control.DeepSeq
 import Lens.FunDep.Affected (Affected, affected, toDPList, ToDynamic)
 import Delta (positive, negative, Delta, delta_union, (#-), (#+))
 import Lens.Predicate.Dynamic (DPhrase)
@@ -22,7 +23,7 @@ import FunDep
 import Label (IsSubset, AdjustOrder, Subtract)
 import Lens (setDebugTime, Droppable, Lens(..), TableKey, Rt, Fds, Ts)
 import Lens.Database.Base (LensDatabase(..), LensQuery, Columns, query, query_ex, execute)
-import Lens.Database.Query (build_delete, build_insert, build_update, column_map, query_predicate)
+import Lens.Database.Query (build_delete, build_insert, build_update, column_map, query_predicate, run_multiple)
 import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
 import Lens.Record.Sorted (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
 import Tables (RecoverTables, recover_tables)
@@ -50,8 +51,8 @@ put_delta c (Prim :: Lens s) delta_m what_if =
      qupdate <- mapM (\(k,e) ->
        build_update c tbl k (R.project @(Subtract (VarsEnv (Rt s)) (TableKey (Rt s) (Fds s))) e))
        $ Map.assocs mapUpd
-     v <- mapM action qupdate
-     v <- mapM action qdelete
+     v <- run_multiple action qupdate
+     v <- run_multiple action qdelete
      if List.null insElems
        then return ()
        else
@@ -71,8 +72,9 @@ put_delta c (Debug l) delta_m wif =
   do Prelude.print $ show delta_m
      put_delta c l delta_m wif
 
-put_delta c dl@(DebugTime _ l) delta_m wif =
-  do setDebugTime dl
+put_delta c dl@(DebugTime _ l) delta_m@(d1,d2) wif =
+  do let () = (Set.toList d1, Set.toList d2) `deepseq` ()
+     setDebugTime dl
      put_delta c l delta_m wif
 
 put_delta c (Drop (Proxy :: Proxy key) (Proxy :: Proxy env) (l :: Lens s1)) delta_n wif =
@@ -144,13 +146,13 @@ type LensPut c s =
    LensDatabase c, FromRow (R.Row (Rt s)))
 
 put :: forall c s. LensPut c s =>
-  c -> (Lens s) -> RecordsSet (Rt s) -> IO ()
+  c -> Lens s -> RecordsSet (Rt s) -> IO ()
 put c l rs =
   do unchanged <- query c l
      put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) False
 
 put_wif :: forall c s. LensPut c s =>
-  c -> (Lens s) -> RecordsSet (Rt s) -> IO ()
+  c -> Lens s -> RecordsSet (Rt s) -> IO ()
 put_wif c l rs =
   do unchanged <- query c l
      put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) True

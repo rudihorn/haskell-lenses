@@ -6,6 +6,7 @@
 
 module Lens.Record.Base where
 
+import Control.DeepSeq
 import Data.List
 import Data.Type.Bool
 import Data.Type.Set (Proxy(..), (:++))
@@ -83,6 +84,11 @@ type family EnvSubset (e1 :: Env) (e2 :: Env) where
 data Row (e :: Env) where
   Empty :: Row '[]
   Cons :: (Ord t, Eq t) => t -> Row env -> Row ('( key, t) ': env)
+
+instance NFData (Row '[]) where rnf = rwhnf
+
+instance (NFData (Row env), NFData t) => NFData (Row ('(key, t) ': env)) where
+  rnf (Cons v r) = v `seq` (r `seq` ())
 
 -- Make
 

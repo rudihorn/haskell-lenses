@@ -28,7 +28,8 @@ import Lens.Database.Base (LensGet, get)
 import Lens.Database.Table (create_index, setup)
 import Lens.Database.Postgres (PostgresDatabase)
 import Lens.Put.Classic (put_classic)
-import Lens.Put.Incremental (put)
+import Lens.Put.Incremental (put, put_wif)
+import Lens.Debug.Timing (timing, firstAndLast, timingToMs)
 import FunDep
 import Lens.Record.Sorted (RecordsSet, recs)
 import Delta (fromSet)
@@ -129,19 +130,42 @@ benchmark_1_lens = select (#c #= i @3) t1t2
 
 benchmark_1 c =
   do l1 <- t1t2dbg
-     l <- debugTime l1
+     l <- debugTime $ select (#c #= i @3) l1
      d <- get c l
      let dat = Set.map chrec d
      (t1,()) <- timed $ put c l dat
+     tm1 <- timing l
      dbg1 <- get c l
      put c l d -- revert
      (t2,()) <- timed $ put_classic c l dat
+     tm2 <- timing l
      dbg2 <- get c l
      put c l d -- revert
-     return (t1,t2)
+     return (timingToMs tm1, timingToMs tm2)
+     -- return (t1, t2)
      where
   -- l = benchmark_1_lens
   chrec r = if fetch @"b" r < 100 then update @"d" 5 r else r
+
+benchmark_2 c =
+  do l1 <- t1dbg
+     l <- debugTime $ dropl @'[ '("c", 'P.Int 0)] @'[ "a"] l1
+     d <- get c l
+     let dat = Set.map chrec d
+     (t1,()) <- timed $ put c l dat
+     tm1 <- timing l
+     dbg1 <- get c l
+     put c l d -- revert
+     (t2,()) <- timed $ put_classic c l dat
+     tm2 <- timing l
+     dbg2 <- get c l
+     put c l d -- revert
+     return (timingToMs tm1, timingToMs tm2)
+     -- return (t1, t2)
+     where
+  -- l = benchmark_1_lens
+  a r = fetch @"a" r
+  chrec r = if 60 < a r && a r < 80 then update @"b" 5 r else r
 
 bench_avg wm n b c =
   do _ <- mapM (\_ -> b c) [1..wm]

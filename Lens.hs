@@ -6,6 +6,7 @@
 
 module Lens where
 
+import Control.DeepSeq (NFData)
 import GHC.TypeLits
 import Data.Type.Set ((:++), Proxy(..))
 import Database.PostgreSQL.Simple.FromRow
@@ -177,12 +178,13 @@ type Droppable env key s snew =
    DroppableExp env key (Rt s) (P s) (Fds s) (Rt snew))
 
 type Debuggable rt =
-  (R.Fields rt)
+  (R.Fields rt, NFData (R.Row rt))
+
 
 data Lens (s :: Sort) where
   Prim :: Lensable ('Sort '[table] rt p fds) snew => Lens snew
   Debug :: Debuggable (Rt s) => Lens s -> Lens s
-  DebugTime :: IORef UTCTime -> Lens s -> Lens s
+  DebugTime :: Debuggable (Rt s) => IORef UTCTime -> Lens s -> Lens s
   Join :: Joinable s1 s2 snew joincols =>
     Lens s1 ->
     Lens s2 ->
@@ -232,10 +234,10 @@ select :: forall p s snew.
   (Selectable p s snew) => HPhrase p -> Lens s -> Lens snew
 select pred l = Select pred l
 
-debug :: forall s. (R.Fields (Rt s)) => Lens s -> Lens s
+debug :: forall s. (Debuggable (Rt s)) => Lens s -> Lens s
 debug l = Debug l
 
-debugTime :: forall s. Lens s -> IO (Lens s)
+debugTime :: forall s. (Debuggable (Rt s)) => Lens s -> IO (Lens s)
 debugTime l =
   do t <- getCurrentTime
      r <- newIORef t

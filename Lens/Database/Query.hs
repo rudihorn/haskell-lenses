@@ -236,3 +236,13 @@ build_update db tbl match update =
   dupd = toDynamic update
   matchex = zip colsm dmatch
   updex = zip colsu dupd
+
+combine_queries :: Foldable t => t Builder -> Builder
+combine_queries qs = foldl1 (\a b -> build "{}; {}" (a, b)) qs
+
+run_multiple :: Foldable t => (Builder -> IO ()) -> t Builder -> IO ()
+run_multiple action qs =
+  if null qs
+  then return ()
+  else action $ combine_queries qs
+

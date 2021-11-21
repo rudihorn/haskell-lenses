@@ -4,6 +4,7 @@
 
 module Lens.Put.Classic where
 
+import Control.DeepSeq
 import GHC.TypeLits
 import Data.Type.Set (Proxy(..), (:++))
 import Data.ByteString.Builder(toLazyByteString)
@@ -89,7 +90,8 @@ put_classic c (Debug l) view =
   do Prelude.print $ show view
      put_classic c l view
 put_classic c dl@(DebugTime _ l) view =
-  do setDebugTime dl
+  do let () = Set.toList view `deepseq` ()
+     setDebugTime dl
      put_classic c l view
 put_classic c l@(Drop key env l1) n =
   do res <- put_classic_drop c key env l1 l n
@@ -119,7 +121,8 @@ put_classic_wif c (Debug l) view =
   do Prelude.print $ show view
      put_classic c l view
 put_classic_wif c dl@(DebugTime _ l) view =
-  do setDebugTime dl
+  do let () = Set.toList view `deepseq` ()
+     setDebugTime dl
      put_classic c l view
 put_classic_wif c l@(Drop key env l1) n =
   do res <- put_classic_drop c key env l1 l n

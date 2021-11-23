@@ -6,6 +6,7 @@
 
 module Lens.Predicate.Dynamic where
 
+import Control.DeepSeq
 import Data.Type.Set
 import GHC.TypeLits
 import Data.Text.Format
@@ -22,6 +23,11 @@ data Value where
   Int :: Int -> Value
   String :: String -> Value
   deriving (Eq, Ord)
+
+instance NFData Value where
+  rnf (Bool b) = rnf b
+  rnf (Int i) = rnf i
+  rnf (String s) = rnf s
 
 class BoxValue t where
   box :: t -> Value
@@ -51,8 +57,6 @@ instance KnownNat i => Recoverable ('P.Int i) Value where
 
 instance KnownSymbol s => Recoverable ('P.String s) Value where
   recover Proxy = String (symbolVal (Proxy :: Proxy s))
-
-
 
 -- Phrase
 

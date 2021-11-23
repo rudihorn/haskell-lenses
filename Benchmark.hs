@@ -5,6 +5,7 @@ module Benchmark where
 
 import Control.Exception (assert)
 import GHC.Types (Nat)
+import Data.IORef (readIORef, writeIORef)
 import Data.Set as Set
 import Data.Set (fromList)
 import Data.List (sort)
@@ -29,7 +30,7 @@ import Lens.Database.Table (create_index, setup)
 import Lens.Database.Postgres (PostgresDatabase)
 import Lens.Put.Classic (put_classic)
 import Lens.Put.Incremental (put, put_wif)
-import Lens.Debug.Timing (timing, firstAndLast, timingToMs)
+import Lens.Debug.Timing (timed, timing, firstAndLast, timingToMs, make_timed_conn)
 import FunDep
 import Lens.Record.Sorted (RecordsSet, recs)
 import Delta (fromSet)
@@ -110,14 +111,6 @@ fill_db n c =
 type Fds = '[ 'FunDep '["a"] '["b"], 'FunDep '["a"] '["c"],
              'FunDep '["b"] '["d"]]
 
-timed m =
-  do t1 <- getCurrentTime
-     a <- m
-     t2 <- getCurrentTime
-     let df = nominalDiffTimeToSeconds $ diffUTCTime t2 t1
-     let t = round $ toRational df * 1e3
-     return (t,a)
-
 timed_alt m =
   do t1 <- getCPUTime
      a <- m
@@ -125,47 +118,58 @@ timed_alt m =
      let t = fromIntegral (t2-t1) * 1e-9
      return (t,a)
 
-
 benchmark_1_lens = select (#c #= i @3) t1t2
 
-benchmark_1 c =
+benchmark_1 incremental c =
   do l1 <- t1t2dbg
      l <- debugTime $ select (#c #= i @3) l1
      d <- get c l
      let dat = Set.map chrec d
-     (t1,()) <- timed $ put c l dat
-     tm1 <- timing l
-     dbg1 <- get c l
+     (t1,()) <- timed $
+       if incremental then put c l dat else put_classic c l dat
+     tm <- timing l
      put c l d -- revert
-     (t2,()) <- timed $ put_classic c l dat
-     tm2 <- timing l
-     dbg2 <- get c l
-     put c l d -- revert
-     return (timingToMs tm1, timingToMs tm2)
+     return $ timingToMs tm
      -- return (t1, t2)
      where
   -- l = benchmark_1_lens
   chrec r = if fetch @"b" r < 100 then update @"d" 5 r else r
 
-benchmark_2 c =
+benchmark_2 incremental c =
   do l1 <- t1dbg
      l <- debugTime $ dropl @'[ '("c", 'P.Int 0)] @'[ "a"] l1
+     (tio, tc) <- make_timed_conn c
      d <- get c l
      let dat = Set.map chrec d
-     (t1,()) <- timed $ put c l dat
-     tm1 <- timing l
-     dbg1 <- get c l
+     (t1,()) <- timed $
+       if incremental then put tc l dat else put_classic tc l dat
+     tm <- timing l
+     qt <- readIORef tio
      put c l d -- revert
-     (t2,()) <- timed $ put_classic c l dat
-     tm2 <- timing l
-     dbg2 <- get c l
-     put c l d -- revert
-     return (timingToMs tm1, timingToMs tm2)
-     -- return (t1, t2)
+     return $ (qt !! 1, timingToMs tm)
      where
   -- l = benchmark_1_lens
   a r = fetch @"a" r
-  chrec r = if 60 < a r && a r < 80 then update @"b" 5 r else r
+  chrec r = if 60 < a r && a r <= 80 then update @"b" 5 r else r
+
+benchmark_3 incremental c =
+  do l1 <- t1t2dbg
+     l <- debugTime $ l1
+     (tio, tc) <- make_timed_conn c
+     d <- get c l
+     let dat = Set.map chrec d
+     writeIORef tio []
+     (t1,()) <- timed $
+       if incremental then put tc l dat else put_classic tc l dat
+     tm <- timing l
+     qt <- readIORef tio
+     Prelude.print qt
+     put c l d -- revert
+     return $ timingToMs tm
+     where
+  -- l = benchmark_1_lens
+  b r = fetch @"b" r
+  chrec r = if 40 < b r && b r <= 50 then update @"c" 5 r else r
 
 bench_avg wm n b c =
   do _ <- mapM (\_ -> b c) [1..wm]

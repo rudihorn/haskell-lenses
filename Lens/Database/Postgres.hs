@@ -49,13 +49,15 @@ instance LensQuery PostgresDatabase where
     query' c l Hack =
       do q <- build_query c l
          let qstr = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q
+         Prelude.print qstr
          query_ c (Query { fromQuery = qstr })
   query_ex (Proxy :: Proxy rt) c tables cols_map p = do
     let cols = Prelude.map fst $ recover_env @rt Proxy
     q <- build_query_ex c tables cols cols_map p
     let qstr = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q
-    -- Prelude.print qstr
+    Prelude.print qstr
     query_ c (Query { fromQuery = qstr })
   execute c q = do let qstr = BL.toStrict $ TLE.encodeUtf8 $ toLazyText q
+                   -- Prelude.print qstr
                    _ <- execute_ c (Query {fromQuery = qstr})
                    return ()

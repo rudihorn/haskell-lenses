@@ -1,5 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses, ScopedTypeVariables, TypeApplications,
              AllowAmbiguousTypes, KindSignatures, DataKinds, TypeOperators,
+             BangPatterns,
              TypeInType, GADTs, UndecidableInstances, ConstraintKinds #-}
 
 module Lens.Put.Incremental where
@@ -26,6 +27,8 @@ import Lens.Database.Base (LensDatabase(..), LensQuery, Columns, query, query_ex
 import Lens.Database.Query (build_delete, build_insert, build_update, column_map, query_predicate, run_multiple)
 import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
 import Lens.Record.Sorted (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
+import Data.Time.Clock (getCurrentTime)
+import Lens.Debug.Timing (timed)
 import Tables (RecoverTables, recover_tables)
 
 import qualified Delta
@@ -72,8 +75,8 @@ put_delta c (Debug l) delta_m wif =
   do Prelude.print $ show delta_m
      put_delta c l delta_m wif
 
-put_delta c dl@(DebugTime _ l) delta_m@(d1,d2) wif =
-  do let () = (Set.toList d1, Set.toList d2) `deepseq` ()
+put_delta c dl@(DebugTime _ l) delta_m wif =
+  do SR.eval_strict_delta delta_m
      setDebugTime dl
      put_delta c l delta_m wif
 
@@ -143,17 +146,19 @@ put_delta c (Join (l1 :: Lens s1) (l2 :: Lens s2)) delta_o wif =
 
 type LensPut c s =
   (RecoverTables (Ts s), R.RecoverEnv (Rt s), LensQuery c,
-   LensDatabase c, FromRow (R.Row (Rt s)))
+   LensDatabase c, FromRow (R.Row (Rt s)), NFData (R.Row (Rt s)))
 
 put :: forall c s. LensPut c s =>
   c -> Lens s -> RecordsSet (Rt s) -> IO ()
 put c l rs =
   do unchanged <- query c l
-     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) False
+     let delta = Delta.fromSet rs #- Delta.fromList unchanged
+     put_delta c l delta False
 
 put_wif :: forall c s. LensPut c s =>
   c -> Lens s -> RecordsSet (Rt s) -> IO ()
 put_wif c l rs =
   do unchanged <- query c l
-     put_delta c l (Delta.fromSet rs #- Delta.fromList unchanged) True
+     let delta = Delta.fromSet rs #- Delta.fromList unchanged
+     put_delta c l delta True
 

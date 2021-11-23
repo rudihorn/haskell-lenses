@@ -26,6 +26,11 @@ import qualified Lens.Record.Base as R
 type RecordsSet rt = Set (Row rt)
 type RecordsDelta rt = Delta (Row rt)
 
+instance NFData a => NFData (Set a) where rnf = rnf1
+
+instance NFData1 Set where
+  liftRnf r v = rnf $ fmap r $ toList v
+
 type RemainingColumns rt rt' = L.Subtract (R.VarsEnv rt') (R.InterCols rt rt')
 
 type ProjectJoin rt rt' rt'' = ProjectEnv (R.InterCols rt rt') rt''
@@ -37,6 +42,12 @@ type Joinable rt rt' rt'' =
    Project (R.InterCols rt rt') rt',
    Project (VarsEnv (RemoveInterEnv rt rt')) rt,
    Project (R.VarsEnv rt'') (ProjectEnv (VarsEnv (RemoveInterEnv rt rt')) rt :++ rt'))
+
+eval_strict_delta :: NFData (Row rt) => RecordsDelta rt -> IO ()
+eval_strict_delta (d1,d2) = Set.toList d1 `deepseq` (Set.toList d2) `deepseq` return ()
+
+eval_strict :: NFData (Row rt) => RecordsSet rt -> IO ()
+eval_strict rs = Set.toList rs `deepseq` return ()
 
 join :: forall rt'' rt rt'. Joinable rt rt' rt'' => RecordsSet rt -> RecordsSet rt' -> RecordsSet rt''
 join rs ss = Set.fromList $ concat $ map f_entry $ Set.toList ss where

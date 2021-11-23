@@ -69,7 +69,7 @@ put_classic_select ::
     -> IO (RecordsSet (Rt s))
 put_classic_select c (HPred p) (l :: Lens s) _ n =
   do m <- get c l
-     let unsat = SR.filter p m
+     let unsat = SR.filter (DP.not p) m
      let m0 = merge @(TopologicalSort (Fds s)) unsat n
      return m0
 
@@ -90,7 +90,7 @@ put_classic c (Debug l) view =
   do Prelude.print $ show view
      put_classic c l view
 put_classic c dl@(DebugTime _ l) view =
-  do let () = Set.toList view `deepseq` ()
+  do SR.eval_strict view
      setDebugTime dl
      put_classic c l view
 put_classic c l@(Drop key env l1) n =

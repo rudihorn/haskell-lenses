@@ -6,6 +6,7 @@
 
 module Lens.Predicate.Base where
 
+import Control.DeepSeq
 import GHC.TypeLits
 import Data.Type.Bool
 import Data.Type.Set
@@ -20,6 +21,8 @@ import qualified Lens.Record.Base as RT
 data UnaryOperator where
   Negate :: UnaryOperator
   UnaryMinus :: UnaryOperator
+
+instance NFData UnaryOperator where rnf = (`seq` ())
 
 instance Recoverable 'Negate UnaryOperator where
   recover Proxy = Negate
@@ -36,6 +39,8 @@ data Operator where
   GreaterThan :: Operator
   Equal :: Operator
   LessThan :: Operator
+
+instance NFData Operator where rnf = (`seq` ())
 
 instance Recoverable 'LogicalAnd Operator where
   recover Proxy = LogicalAnd
@@ -68,6 +73,20 @@ data Phrase id v where
   In :: [id] -> [[v]] -> Phrase id v
   Case :: Maybe (Phrase id v) -> [(Phrase id v, Phrase id v)] -> Phrase id v -> Phrase id v
   Erased :: RT.Env -> * -> Phrase id v
+
+instance (NFData v, NFData id) => NFData (Phrase id v) where rnf = rnf2
+
+instance NFData2 Phrase where
+  liftRnf2 _ r (Constant v) = r v
+  liftRnf2 r _ (Var id) = r id
+  liftRnf2 r1 r2 (InfixAppl op v1 v2) = rnf op `seq` liftRnf2 r1 r2 v1 `seq` liftRnf2 r1 r2 v2
+  liftRnf2 r1 r2 (UnaryAppl op v) = rnf op `seq` liftRnf2 r1 r2 v
+  liftRnf2 r1 r2 (In ids v) = rnf (map r1 ids) `seq` rnf (map (rnf. map r2) v)
+  liftRnf2 r1 r2 (Case mb cases e) =
+    rnf (fmap (liftRnf2 r1 r2) mb) `seq`
+    rnf (fmap (\(a,b) -> liftRnf2 r1 r2 a `seq` liftRnf2 r1 r2 b) cases) `seq`
+    liftRnf2 r1 r2 e
+  liftRnf2 r1 r2 (Erased _ _) = ()
 
 type SPhrase = Phrase Symbol Value
 

@@ -81,6 +81,9 @@ type family EnvSubset (e1 :: Env) (e2 :: Env) where
   EnvSubset ('(key, val) ': e1) e2 = (LookupTypeMaybe e2 key ~ 'Just val, EnvSubset e1 e2)
   EnvSubset '[] _ = ()
 
+
+-- Row data type
+
 data Row (e :: Env) where
   Empty :: Row '[]
   Cons :: (Ord t, Eq t) => t -> Row env -> Row ('( key, t) ': env)

@@ -12,6 +12,7 @@ import Database.PostgreSQL.Simple.FromRow (FromRow(..))
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import qualified Data.MultiSet as MSet
 
 import Common
 import Control.DeepSeq
@@ -22,10 +23,10 @@ import Lens.Predicate.Hybrid (HPhrase(..))
 import FunDep
 -- import FunDep (FunDep(..), Left, Right, TopologicalSort)
 import Label (IsSubset, AdjustOrder, Subtract)
-import Lens (setDebugTime, Droppable, Lens(..), TableKey, Rt, Fds, Ts)
+import Lens (setDebugTime, delete_left, delete_right, Droppable, DeleteStrategy, Joinable, Lens(..), TableKey, Rt, Fds, Ts)
 import Lens.Database.Base (LensDatabase(..), LensQuery, Columns, query, query_ex, execute)
 import Lens.Database.Query (build_delete, build_insert, build_update, column_map, query_predicate, run_multiple)
-import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
+import Lens.Record.Base (Env, InterCols, InterEnv, Project, ProjectEnv, VarsEnv)
 import Lens.Record.Sorted (join, merge, revise_fd, project, Revisable, RecordsSet, RecordsDelta)
 import Data.Time.Clock (getCurrentTime)
 import Lens.Debug.Timing (timed)
@@ -44,6 +45,93 @@ import qualified Value
 --  PrimPut :: LensQuery c rt => Lens ts rt p fds -> LensPutable c ts rt p fds
 --  DropPut :: (Droppable env key rt1 p1 fds1 rt pred fds, LensQuery c rt) => LensPutable c ts rt1 p1 fds1 -> Lens ts rt p fds -> LensPutable c ts rt p fds
 --  SelectPut :: (Selectable rt p LensQuery c rt) => LensPutable c ts1 rt1 p1 fds1 -> Lens ts rt p fds -> LensPutable c ts rt p fds
+
+put_delta_join_left :: forall c s1 s2 snew joincols.
+  (LensQuery c, Joinable s1 s2 snew joincols) =>
+  c -> Lens s1 -> Lens s2 -> Lens snew -> RecordsDelta (Rt snew)
+    -> IO (RecordsDelta (Rt s1), RecordsDelta (Rt s2))
+put_delta_join_left c (l1 :: Lens s1) (l2 :: Lens s2) (_ :: Lens s) delta_o =
+  do qd1 <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) pred_m
+     qd2 <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) pred_n
+     let delta_m0 = Delta.fromSet (merge @(TopologicalSort (Fds s1)) qd1 delta_ol) #- Delta.fromSet qd1
+     let delta_n' = Delta.fromSet (merge @(TopologicalSort (Fds s2)) qd2 delta_or) #- Delta.fromSet qd2
+     qM <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) (pjoin l1 delta_m0)
+     qN <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) (pjoin l2 delta_n')
+     let delta_l = (join @(Rt s) (positive $ Delta.fromSet qM #+ delta_m0) (positive delta_n') `Set.union`
+                    join @(Rt s)(positive delta_m0) (positive $ Delta.fromSet qN #+ delta_n'),
+                    (join @(Rt s) (negative delta_m0) qN) `Set.union` (join @(Rt s) qM (negative delta_n')))
+                    #- delta_o
+     let delta_m' = delta_m0 #- (project @(VarsEnv (Rt s1)) $ positive delta_l,
+                                 project @(VarsEnv (Rt s1)) $ negative delta_l)
+     return (delta_m', delta_n') where
+  delta_ol = project @(VarsEnv (Rt s1)) $ Delta.positive delta_o
+  delta_or = project @(VarsEnv (Rt s2)) $ Delta.positive delta_o
+  pred_m = DP.conjunction [or_key $ affected @(Fds s1) delta_ol, query_predicate l1]
+  pred_n = DP.conjunction [or_key $ affected @(Fds s2) delta_or, query_predicate l2]
+  ts1 = recover_tables @(Ts s1) Proxy
+  ts2 = recover_tables @(Ts s2) Proxy
+  pjoin :: (Project (InterCols (Rt s1) (Rt s2)) (Rt sl), ToDynamic (ProjectEnv (InterCols (Rt s1) (Rt s2)) (Rt sl))) =>
+    Lens sl -> RecordsDelta (Rt sl) -> DPhrase
+  pjoin (l :: Lens sl) delta =
+    DP.conjunction
+      [P.In (recover @(InterCols (Rt s1) (Rt s2)) Proxy)
+         (toDPList $ Set.toList $ project @(InterCols (Rt s1) (Rt s2)) (delta_union delta)),
+       query_predicate l]
+ -- workaround for weird affected behavior. When no FDS are available search for identical rows
+ -- this should probably search for all keys as well as functional dependencies
+  or_key (P.Constant (DP.Bool False)) = P.In (recover @(VarsEnv (Rt s2)) @[String] Proxy) (toDPList $ Set.toList $ delta_or)
+  or_key p = p
+
+put_delta_join_right :: forall c s1 s2 snew joincols.
+  (LensQuery c, Joinable s1 s2 snew joincols, R.RecoverEnv (Rt snew), RecoverTables (Ts snew)) =>
+  c -> (R.Row (Rt snew) -> DeleteStrategy) -> Lens s1 -> Lens s2 -> Lens snew -> RecordsDelta (Rt snew)
+    -> IO (RecordsDelta (Rt s1), RecordsDelta (Rt s2))
+put_delta_join_right c delfn (l1 :: Lens s1) (l2 :: Lens s2) (l :: Lens s) delta_o =
+  do qd1 <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) pred_m
+     qd2 <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) pred_n
+     let delta_m0 = Delta.fromSet (merge @(TopologicalSort (Fds s1)) qd1 delta_ol) #- Delta.fromSet qd1
+     let delta_n0 = Delta.fromSet (merge @(TopologicalSort (Fds s2)) qd2 delta_or) #- Delta.fromSet qd2
+     qM <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) (pjoin l1 delta_m0)
+     qN <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) (pjoin l2 delta_n0)
+     let delta_l = (join @(Rt s) (positive $ Delta.fromSet qM #+ delta_m0) (positive delta_n0) `Set.union`
+                    join @(Rt s)(positive delta_m0) (positive $ Delta.fromSet qN #+ delta_n0),
+                    (join @(Rt s) (negative delta_m0) qN) `Set.union` (join @(Rt s) qM (negative delta_n0)))
+                    #- delta_o
+     (ll,la) <- sort_deletes delta_o $ positive delta_l
+     let delta_m' = delta_m0 #- (project @(VarsEnv (Rt s1)) ll, Set.empty)
+     let delta_n' = delta_n0 #- (project @(VarsEnv (Rt s2)) la, Set.empty)
+     return (delta_m', delta_n') where
+  sort_deletes delta_o delta_l_pl =
+    if any (delete_right . delfn) delta_l_pl
+    then
+      do qO <- MSet.fromList <$>
+           query_ex @c @(InterEnv (Rt s1) (Rt s2)) Proxy c ts (column_map l) (query_predicate l)
+         -- use multiset semantics here
+         let ll = join @(Rt s) delta_l_pl $
+                  MSet.toSet $ (qO `MSet.union` (projMSet $ positive delta_o)) MSet.\\ projMSet (negative delta_o)
+         let la = delta_l_pl Set.\\ ll
+         return (ll `Set.union` Set.filter (delete_left . delfn) la, Set.filter (delete_right . delfn) la)
+    else return (delta_l_pl, Set.empty)
+  projMSet set = MSet.map (R.project @joincols @(Rt snew)) $ MSet.fromSet set
+  delta_ol = project @(VarsEnv (Rt s1)) $ Delta.positive delta_o
+  delta_or = project @(VarsEnv (Rt s2)) $ Delta.positive delta_o
+  pred_m = DP.conjunction [or_key $ affected @(Fds s1) delta_ol, query_predicate l1]
+  pred_n = DP.conjunction [or_key $ affected @(Fds s2) delta_or, query_predicate l2]
+  ts1 = recover_tables @(Ts s1) Proxy
+  ts2 = recover_tables @(Ts s2) Proxy
+  ts = recover_tables @(Ts snew) Proxy
+  pjoin :: (Project (InterCols (Rt s1) (Rt s2)) (Rt sl), ToDynamic (ProjectEnv (InterCols (Rt s1) (Rt s2)) (Rt sl))) =>
+    Lens sl -> RecordsDelta (Rt sl) -> DPhrase
+  pjoin (l :: Lens sl) delta =
+    DP.conjunction
+      [P.In (recover @(InterCols (Rt s1) (Rt s2)) Proxy)
+         (toDPList $ Set.toList $ project @(InterCols (Rt s1) (Rt s2)) (delta_union delta)),
+       query_predicate l]
+ -- workaround for weird affected behavior. When no FDS are available search for identical rows
+ -- this should probably search for all keys as well as functional dependencies
+  or_key (P.Constant (DP.Bool False)) = P.In (recover @(VarsEnv (Rt s2)) @[String] Proxy) (toDPList $ Set.toList $ delta_or)
+  or_key p = p
+
 
 put_delta :: forall c s.
   (RecoverTables (Ts s), R.RecoverEnv (Rt s), LensQuery c, LensDatabase c) =>
@@ -111,7 +199,7 @@ put_delta c (Select (HPred p) l) delta_n wif =
   cols = column_map l
   tbls = recover_tables @(Ts s) Proxy
 
-put_delta c (Join (l1 :: Lens s1) (l2 :: Lens s2)) delta_o wif =
+put_delta c (Join delfn (l1 :: Lens s1) (l2 :: Lens s2)) delta_o wif =
   do qd1 <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) pred_m
      qd2 <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) pred_n
      let delta_m0 = Delta.fromSet (merge @(TopologicalSort (Fds s1)) qd1 delta_ol) #- Delta.fromSet qd1

@@ -96,7 +96,7 @@ setup db (Prim :: Lens s) =
   colNames = map colName cols
 
 setup db (Debug l) = setup db l
-setup db (Join l1 l2) =
+setup db (Join _ l1 l2) =
   do setup db l1
      setup db l2
 setup db (Select _ l) = setup db l

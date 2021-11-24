@@ -120,6 +120,7 @@ timed_alt m =
 
 benchmark_1_lens = select (#c #= i @3) t1t2
 
+-- select lens microbenchmark
 benchmark_1 incremental c =
   do l1 <- t1t2dbg
      l <- debugTime $ select (#c #= i @3) l1
@@ -135,6 +136,7 @@ benchmark_1 incremental c =
   -- l = benchmark_1_lens
   chrec r = if fetch @"b" r < 100 then update @"d" 5 r else r
 
+-- drop lens microbenchmark
 benchmark_2 incremental c =
   do l1 <- t1dbg
      l <- debugTime $ dropl @'[ '("c", 'P.Int 0)] @'[ "a"] l1
@@ -152,6 +154,7 @@ benchmark_2 incremental c =
   a r = fetch @"a" r
   chrec r = if 60 < a r && a r <= 80 then update @"b" 5 r else r
 
+-- join lens microbenchmark
 benchmark_3 incremental c =
   do l1 <- t1t2dbg
      l <- debugTime $ l1
@@ -165,7 +168,8 @@ benchmark_3 incremental c =
      qt <- readIORef tio
      Prelude.print qt
      put c l d -- revert
-     return $ timingToMs tm
+     let relqtimes = if incremental then Prelude.take 4 qt else Prelude.take 2 qt
+     return $ (sum relqtimes, timingToMs tm)
      where
   -- l = benchmark_1_lens
   b r = fetch @"b" r

@@ -36,7 +36,7 @@ timing (DebugTime r l) =
   do t <- readIORef r
      tm <- timing l
      return $ Time t tm
-timing (Join l1 l2) =
+timing (Join _ l1 l2) =
   do t1 <- timing l1
      t2 <- timing l2
      return $ Split t1 t2

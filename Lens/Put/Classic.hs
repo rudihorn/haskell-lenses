@@ -22,7 +22,7 @@ import Lens.Predicate.Hybrid (HPhrase(..))
 import FunDep
 -- import FunDep (FunDep(..), Left, Right, TopologicalSort)
 import Label (IsSubset, AdjustOrder, Subtract)
-import Lens (setDebugTime, Droppable, Joinable, Selectable, Lens(..), TableKey, Rt, Fds, Ts)
+import Lens (setDebugTime, Droppable, Joinable, Selectable, DeleteStrategy, Lens(..), TableKey, Rt, Fds, Ts)
 import Lens.Database.Base (LensDatabase(..), LensQuery, Columns, get, query, query_ex, execute)
 import Lens.Database.Query (build_delete, build_delete_all, build_insert, build_update, column_map, query_predicate)
 import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
@@ -49,9 +49,9 @@ put_classic_drop c (Proxy :: Proxy key) (Proxy :: Proxy env) (l1 :: Lens s1) _ n
 
 put_classic_join ::
   (LensQuery c, Joinable s1 s2 snew joincols) =>
-  c -> (Lens s1) -> (Lens s2) -> (Lens snew) -> RecordsSet (Rt snew)
+  c -> (R.Row (Rt snew) -> DeleteStrategy) -> Lens s1 -> Lens s2 -> Lens snew -> RecordsSet (Rt snew)
     -> IO (RecordsSet (Rt s1), RecordsSet (Rt s2))
-put_classic_join c (l1 :: Lens s1) (l2 :: Lens s2) _ o =
+put_classic_join c delfn (l1 :: Lens s1) (l2 :: Lens s2) _ o =
   do m <- get c l1
      n <- get c l2
      let m0 = merge @(TopologicalSort (Fds s1)) m oleft
@@ -99,8 +99,8 @@ put_classic c l@(Drop key env l1) n =
 put_classic c l@(Select p l1) n =
   do res <- put_classic_select c p l1 l n
      put_classic c l1 res
-put_classic c l@(Join l1 l2) o =
-  do (m', n') <- put_classic_join c l1 l2 l o
+put_classic c l@(Join delfn l1 l2) o =
+  do (m', n') <- put_classic_join c delfn l1 l2 l o
      put_classic c l1 m'
      put_classic c l2 n'
 
@@ -130,7 +130,7 @@ put_classic_wif c l@(Drop key env l1) n =
 put_classic_wif c l@(Select p l1) n =
   do res <- put_classic_select c p l1 l n
      put_classic c l1 res
-put_classic_wif c l@(Join l1 l2) o =
-  do (m', n') <- put_classic_join c l1 l2 l o
+put_classic_wif c l@(Join delfn l1 l2) o =
+  do (m', n') <- put_classic_join c delfn l1 l2 l o
      put_classic c l2 n'
      put_classic c l1 m'

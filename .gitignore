@@ -1,5 +1,7 @@
 .#*
 test.*
+*.hi
+*.o
 test
 TAGS
 dist-newstyle

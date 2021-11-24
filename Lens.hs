@@ -110,6 +110,8 @@ type JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
    LensCommon ('Sort ts2 rt2 p2 fds2),
    R.Fields rtnew,
    FromRow (R.Row rtnew),
+   FromRow (R.Row (R.InterEnv rt1 rt2)),
+   RecoverEnv (R.InterEnv rt1 rt2),
    ProjectEnv (VarsEnv rt1) rtnew ~ rt1,
    ProjectEnv (VarsEnv rt2) rtnew ~ rt2,
    Project (VarsEnv rt1) rtnew,
@@ -117,9 +119,12 @@ type JoinImplConstraints ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
    Recoverable joincols [String],
    Project joincols rt1,
    Project joincols rt2,
+   Project joincols rtnew,
+   ProjectEnv joincols rtnew ~ ProjectEnv joincols rt2,
    ToDynamic (ProjectEnv joincols rt1),
    ToDynamic (ProjectEnv joincols rt2),
-   RT.Joinable rt1 rt2 rtnew)
+   RT.Joinable rt1 rt2 rtnew,
+   RT.Joinable rtnew (ProjectEnv joincols rtnew) rtnew)
 
 type JoinableExp ts1 rt1 p1 fds1 ts2 rt2 p2 fds2 rtnew joincols =
   (rtnew ~ JoinEnv rt1 rt2,
@@ -180,12 +185,26 @@ type Droppable env key s snew =
 type Debuggable rt =
   (R.Fields rt, NFData (R.Row rt))
 
+data DeleteStrategy = DeleteLeft | DeleteBoth | DeleteRight
+
+delete_only_left :: DeleteStrategy -> Bool
+delete_only_left DeleteLeft = True
+delete_only_left _ = False
+
+delete_left :: DeleteStrategy -> Bool
+delete_left DeleteRight = False
+delete_left _ = True
+
+delete_right :: DeleteStrategy -> Bool
+delete_right DeleteLeft = False
+delete_right _ = True
 
 data Lens (s :: Sort) where
   Prim :: Lensable ('Sort '[table] rt p fds) snew => Lens snew
   Debug :: Debuggable (Rt s) => Lens s -> Lens s
   DebugTime :: Debuggable (Rt s) => IORef UTCTime -> Lens s -> Lens s
   Join :: Joinable s1 s2 snew joincols =>
+    (Row (Rt snew) -> DeleteStrategy) ->
     Lens s1 ->
     Lens s2 ->
     Lens snew
@@ -215,7 +234,7 @@ lensToFromRowHack (Debug l) = lensToFromRowHack l
 lensToFromRowHack (DebugTime _ l) = lensToFromRowHack l
 lensToFromRowHack (Select _ _) = Hack
 lensToFromRowHack (Drop _ _ _) = Hack
-lensToFromRowHack (Join _ _) = Hack
+lensToFromRowHack (Join _ _ _) = Hack
 
 prim_pred :: forall table rt fds p fdsnew s snew.
   (s ~ 'Sort '[table] rt p fds,
@@ -262,7 +281,15 @@ join :: Joinable s1 s2 snew joincols =>
     Lens s1 ->
     Lens s2 ->
     Lens snew
-join l1 l2 = Join l1 l2
+join l1 l2 = Join (\_ -> DeleteLeft) l1 l2
+
+join_del :: Joinable s1 s2 snew joincols =>
+    ((Row (Rt snew)) -> DeleteStrategy) ->
+    Lens s1 ->
+    Lens s2 ->
+    Lens snew
+join_del fn l1 l2 = Join fn l1 l2
+
 
 lens1 = prim @"test1" @'[ '("A", Int), '("B", String)] @'[ '["A"] --> '["B"]]
 lens2 = select (var @"A" #> i @30) lens1

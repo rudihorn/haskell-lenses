@@ -26,7 +26,7 @@ import qualified Lens.Record.Base as R
 type RecordsSet rt = Set (Row rt)
 type RecordsDelta rt = Delta (Row rt)
 
-instance NFData a => NFData (Set a) where rnf = rnf1
+-- instance NFData a => NFData (Set a) where rnf = rnf1
 
 instance NFData1 Set where
   liftRnf r v = rnf $ fmap r $ toList v

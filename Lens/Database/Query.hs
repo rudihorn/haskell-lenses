@@ -45,7 +45,7 @@ instance (RecoverTables (Ts s), RecoverEnv (Rt s)) => ColumnMap (Lens s) where
   column_map (DebugTime _ l) = column_map l
   column_map (Select _ l) = column_map l
   column_map (Drop Proxy Proxy l) = column_map l
-  column_map (Join l1 l2) = Map.unionWith f (column_map l1) (column_map l2) where
+  column_map (Join _ l1 l2) = Map.unionWith f (column_map l1) (column_map l2) where
     f (t1, typ) (t2, _) = (t1 ++ t2, typ)
 
 class QueryPredicate a where
@@ -57,7 +57,7 @@ instance QueryPredicate (Lens s) where
   query_predicate (DebugTime _ l) = query_predicate l
   query_predicate (Drop Proxy Proxy l) = query_predicate l
   query_predicate (Select (HPred pr) l) = DP.simplify $ P.InfixAppl (P.LogicalAnd) pr (query_predicate l)
-  query_predicate (Join l1 l2) = DP.simplify $ P.InfixAppl (P.LogicalAnd) (query_predicate l1) (query_predicate l2)
+  query_predicate (Join _ l1 l2) = DP.simplify $ P.InfixAppl (P.LogicalAnd) (query_predicate l1) (query_predicate l2)
 
 print_op :: P.Operator -> String
 print_op P.Plus = "+"

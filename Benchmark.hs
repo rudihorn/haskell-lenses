@@ -155,9 +155,10 @@ benchmark_2 incremental c =
   chrec r = if 60 < a r && a r <= 80 then update @"b" 5 r else r
 
 -- join lens microbenchmark
-benchmark_3 incremental c =
-  do l1 <- t1t2dbg
-     l <- debugTime $ l1
+benchmark_3_templ delfn incremental c =
+  do l1 <- t1dbg
+     l2 <- t2dbg
+     l <- debugTime $ join_templ delfn l1 l2
      (tio, tc) <- make_timed_conn c
      d <- get c l
      let dat = Set.map chrec d
@@ -174,6 +175,15 @@ benchmark_3 incremental c =
   -- l = benchmark_1_lens
   b r = fetch @"b" r
   chrec r = if 40 < b r && b r <= 50 then update @"c" 5 r else r
+
+benchmark_3_dl incremental c =
+  benchmark_3_templ (\_ -> DeleteLeft) incremental c
+
+benchmark_3_db incremental c =
+  benchmark_3_templ (\_ -> DeleteBoth) incremental c
+
+benchmark_3_dr incremental c =
+  benchmark_3_templ (\_ -> DeleteRight) incremental c
 
 bench_avg wm n b c =
   do _ <- mapM (\_ -> b c) [1..wm]

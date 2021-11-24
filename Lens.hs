@@ -187,10 +187,6 @@ type Debuggable rt =
 
 data DeleteStrategy = DeleteLeft | DeleteBoth | DeleteRight
 
-delete_only_left :: DeleteStrategy -> Bool
-delete_only_left DeleteLeft = True
-delete_only_left _ = False
-
 delete_left :: DeleteStrategy -> Bool
 delete_left DeleteRight = False
 delete_left _ = True
@@ -283,12 +279,12 @@ join :: Joinable s1 s2 snew joincols =>
     Lens snew
 join l1 l2 = Join (\_ -> DeleteLeft) l1 l2
 
-join_del :: Joinable s1 s2 snew joincols =>
+join_templ :: Joinable s1 s2 snew joincols =>
     ((Row (Rt snew)) -> DeleteStrategy) ->
     Lens s1 ->
     Lens s2 ->
     Lens snew
-join_del fn l1 l2 = Join fn l1 l2
+join_templ fn l1 l2 = Join fn l1 l2
 
 
 lens1 = prim @"test1" @'[ '("A", Int), '("B", String)] @'[ '["A"] --> '["B"]]

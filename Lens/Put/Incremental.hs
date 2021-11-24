@@ -105,7 +105,9 @@ put_delta_join_templ c delfn (l1 :: Lens s1) (l2 :: Lens s2) (l :: Lens s) delta
     if any (delete_right . delfn) delta_l_pl
     then
       do qO <- MSet.fromList <$>
-           query_ex @c @(InterEnv (Rt s1) (Rt s2)) Proxy c ts (column_map l) (query_predicate l)
+           query_ex @c @(InterEnv (Rt s1) (Rt s2)) Proxy c ts (column_map l) (
+           DP.conjunction [query_predicate l,
+             P.In (recover @joincols Proxy) (toDPList $ Set.toList $ project @joincols delta_l_pl)])
          -- use multiset semantics here
          let ll = join @(Rt s) delta_l_pl $
                   MSet.toSet $ (qO `MSet.union` (projMSet $ positive delta_o)) MSet.\\ projMSet (negative delta_o)
@@ -120,7 +122,7 @@ put_delta_join_templ c delfn (l1 :: Lens s1) (l2 :: Lens s2) (l :: Lens s) delta
   ts1 = recover_tables @(Ts s1) Proxy
   ts2 = recover_tables @(Ts s2) Proxy
   ts = recover_tables @(Ts snew) Proxy
-  pjoin :: (Project (InterCols (Rt s1) (Rt s2)) (Rt sl), ToDynamic (ProjectEnv (InterCols (Rt s1) (Rt s2)) (Rt sl))) =>
+  pjoin :: (Project (InterCols (Rt s1) (Rt s2)) (Rt sl), ToDynamic (ProjectEnv joincols (Rt sl))) =>
     Lens sl -> RecordsDelta (Rt sl) -> DPhrase
   pjoin (l :: Lens sl) delta =
     DP.conjunction

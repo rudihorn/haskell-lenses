@@ -22,7 +22,7 @@ import Lens.Predicate.Hybrid (HPhrase(..))
 import FunDep
 -- import FunDep (FunDep(..), Left, Right, TopologicalSort)
 import Label (IsSubset, AdjustOrder, Subtract)
-import Lens (setDebugTime, Droppable, Joinable, Selectable, DeleteStrategy, Lens(..), TableKey, Rt, Fds, Ts)
+import Lens (setDebugTime, Droppable, Joinable, Selectable, DeleteStrategy, delete_left, delete_right, Lens(..), TableKey, Rt, Fds, Ts)
 import Lens.Database.Base (LensDatabase(..), LensQuery, Columns, get, query, query_ex, execute)
 import Lens.Database.Query (build_delete, build_delete_all, build_insert, build_update, column_map, query_predicate)
 import Lens.Record.Base (Env, InterCols, Project, ProjectEnv, VarsEnv)
@@ -47,7 +47,7 @@ put_classic_drop c (Proxy :: Proxy key) (Proxy :: Proxy env) (l1 :: Lens s1) _ n
      return $ revise_fd @(key --> P.Vars env) mprime old where
   envRows = Set.fromList [P.toRow @env]
 
-put_classic_join ::
+put_classic_join :: forall c s1 s2 snew joincols.
   (LensQuery c, Joinable s1 s2 snew joincols) =>
   c -> (R.Row (Rt snew) -> DeleteStrategy) -> Lens s1 -> Lens s2 -> Lens snew -> RecordsSet (Rt snew)
     -> IO (RecordsSet (Rt s1), RecordsSet (Rt s2))
@@ -57,8 +57,11 @@ put_classic_join c delfn (l1 :: Lens s1) (l2 :: Lens s2) _ o =
      let m0 = merge @(TopologicalSort (Fds s1)) m oleft
      let n0 = merge @(TopologicalSort (Fds s2)) n oright
      let l = join m0 n0 `Set.difference` o
-     let m' = m0 `Set.difference` (project @(VarsEnv (Rt s1)) l)
-     return (m', n0)
+     let ll = join @(Rt snew) l (project @joincols o)
+     let la = l Set.\\ ll
+     let m' = m0 `Set.difference` (project @(VarsEnv (Rt s1)) $ ll `Set.union` Set.filter (delete_left . delfn) la)
+     let n' = n0 `Set.difference` (project @(VarsEnv (Rt s2)) $ Set.filter (delete_right . delfn) la)
+     return (m', n')
      where
   oleft = project @(VarsEnv (Rt s1)) o
   oright = project @(VarsEnv (Rt s2)) o

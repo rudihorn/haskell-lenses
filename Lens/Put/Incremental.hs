@@ -82,11 +82,11 @@ put_delta_join_left c (l1 :: Lens s1) (l2 :: Lens s2) (_ :: Lens s) delta_o =
   or_key (P.Constant (DP.Bool False)) = P.In (recover @(VarsEnv (Rt s2)) @[String] Proxy) (toDPList $ Set.toList $ delta_or)
   or_key p = p
 
-put_delta_join_right :: forall c s1 s2 snew joincols.
+put_delta_join_templ :: forall c s1 s2 snew joincols.
   (LensQuery c, Joinable s1 s2 snew joincols, R.RecoverEnv (Rt snew), RecoverTables (Ts snew)) =>
   c -> (R.Row (Rt snew) -> DeleteStrategy) -> Lens s1 -> Lens s2 -> Lens snew -> RecordsDelta (Rt snew)
     -> IO (RecordsDelta (Rt s1), RecordsDelta (Rt s2))
-put_delta_join_right c delfn (l1 :: Lens s1) (l2 :: Lens s2) (l :: Lens s) delta_o =
+put_delta_join_templ c delfn (l1 :: Lens s1) (l2 :: Lens s2) (l :: Lens s) delta_o =
   do qd1 <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) pred_m
      qd2 <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) pred_n
      let delta_m0 = Delta.fromSet (merge @(TopologicalSort (Fds s1)) qd1 delta_ol) #- Delta.fromSet qd1
@@ -131,6 +131,9 @@ put_delta_join_right c delfn (l1 :: Lens s1) (l2 :: Lens s2) (l :: Lens s) delta
  -- this should probably search for all keys as well as functional dependencies
   or_key (P.Constant (DP.Bool False)) = P.In (recover @(VarsEnv (Rt s2)) @[String] Proxy) (toDPList $ Set.toList $ delta_or)
   or_key p = p
+
+
+
 
 
 put_delta :: forall c s.
@@ -199,38 +202,10 @@ put_delta c (Select (HPred p) l) delta_n wif =
   cols = column_map l
   tbls = recover_tables @(Ts s) Proxy
 
-put_delta c (Join delfn (l1 :: Lens s1) (l2 :: Lens s2)) delta_o wif =
-  do qd1 <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) pred_m
-     qd2 <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) pred_n
-     let delta_m0 = Delta.fromSet (merge @(TopologicalSort (Fds s1)) qd1 delta_ol) #- Delta.fromSet qd1
-     let delta_n' = Delta.fromSet (merge @(TopologicalSort (Fds s2)) qd2 delta_or) #- Delta.fromSet qd2
-     qM <- Set.fromList <$> query_ex @c @(Rt s1) Proxy c ts1 (column_map l1) (pjoin l1 delta_m0)
-     qN <- Set.fromList <$> query_ex @c @(Rt s2) Proxy c ts2 (column_map l2) (pjoin l2 delta_n')
-     let delta_l = (join @(Rt s) (positive $ Delta.fromSet qM #+ delta_m0) (positive delta_n') `Set.union`
-                    join @(Rt s)(positive delta_m0) (positive $ Delta.fromSet qN #+ delta_n'),
-                    (join @(Rt s) (negative delta_m0) qN) `Set.union` (join @(Rt s) qM (negative delta_n')))
-                    #- delta_o
-     let delta_m' = delta_m0 #- (project @(VarsEnv (Rt s1)) $ positive delta_l,
-                                 project @(VarsEnv (Rt s1)) $ negative delta_l)
-     put_delta c l1 delta_m' wif
-     put_delta c l2 delta_n' wif where
-  delta_ol = project @(VarsEnv (Rt s1)) $ Delta.positive delta_o
-  delta_or = project @(VarsEnv (Rt s2)) $ Delta.positive delta_o
-  pred_m = DP.conjunction [or_key $ affected @(Fds s1) delta_ol, query_predicate l1]
-  pred_n = DP.conjunction [or_key $ affected @(Fds s2) delta_or, query_predicate l2]
-  ts1 = recover_tables @(Ts s1) Proxy
-  ts2 = recover_tables @(Ts s2) Proxy
-  pjoin :: (Project (InterCols (Rt s1) (Rt s2)) (Rt sl), ToDynamic (ProjectEnv (InterCols (Rt s1) (Rt s2)) (Rt sl))) =>
-    Lens sl -> RecordsDelta (Rt sl) -> DPhrase
-  pjoin (l :: Lens sl) delta =
-    DP.conjunction
-      [P.In (recover @(InterCols (Rt s1) (Rt s2)) Proxy)
-         (toDPList $ Set.toList $ project @(InterCols (Rt s1) (Rt s2)) (delta_union delta)),
-       query_predicate l]
- -- workaround for weird affected behavior. When no FDS are available search for identical rows
- -- this should probably search for all keys as well as functional dependencies
-  or_key (P.Constant (DP.Bool False)) = P.In (recover @(VarsEnv (Rt s2)) @[String] Proxy) (toDPList $ Set.toList $ delta_or)
-  or_key p = p
+put_delta c l@(Join delfn (l1 :: Lens s1) (l2 :: Lens s2)) delta_o wif =
+  do (delta_m, delta_n) <- put_delta_join_templ c delfn l1 l2 l delta_o
+     put_delta c l1 delta_m wif
+     put_delta c l2 delta_n wif
 
 type LensPut c s =
   (RecoverTables (Ts s), R.RecoverEnv (Rt s), LensQuery c,
